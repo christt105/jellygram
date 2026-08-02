@@ -35,6 +35,7 @@ public class Worker : BackgroundService
             using var userClient = new UserClientService();
 
             var bot = new WTelegram.Bot(botToken, apiId, apiHash, connection);
+            TransferTuning.Apply(bot.Client, "Bot", defaultParallelTransfers: 4);
 
             // Register so PreviewService and HTTP endpoints can use the live bot instance
             _botHolder.Register(bot, apiClient, authUserId);
