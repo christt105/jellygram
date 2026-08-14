@@ -10,6 +10,11 @@ namespace Bot.Utils;
 /// The two ceilings are a different kind of limit: the bot's is a per-account rate limit, so 8
 /// parts gets no faster than 4, it just doubles the FLOOD_WAIT count (86 in one run, all against
 /// the bot); the user account's is per-connection, so it keeps climbing with more parts.
+///
+/// The account numbers above are download-only. Applying 8 parts to the account's uploads broke
+/// them: SaveBigFilePart on a fresh upload DC connection failed with a broken pipe on every attempt,
+/// reproduced twice. Uploads and downloads share the same semaphore, so until that's split the
+/// account defaults to the library's own 2 parts, which is known to work in both directions.
 /// </remarks>
 public static class TransferTuning
 {
