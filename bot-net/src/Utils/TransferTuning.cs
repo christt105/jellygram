@@ -5,28 +5,32 @@ namespace Bot.Utils;
 /// </summary>
 /// <remarks>
 /// The library defaults are 2 parts of 512 KB in flight, which leaves the connection waiting on
-/// round-trips rather than filling the link. Measured on the same 720 MB file, interleaved on both
-/// identities: 8.8/9.4 MB/s (bot/user) at 2x512 KB, 18.0/27.2 at 4x1 MB, 18.4/27.3 at 8x1 MB.
-/// The two ceilings are a different kind of limit: the bot's is a per-account rate limit, so 8
-/// parts gets no faster than 4, it just doubles the FLOOD_WAIT count (86 in one run, all against
-/// the bot); the user account's is per-connection, so it keeps climbing with more parts.
+/// round-trips rather than filling the link. Raising <see cref="ParallelTransfers"/> is safe to tune
+/// per identity; raising the part size is not, and stays fixed at 512 KB for everyone.
 ///
-/// The account numbers above are download-only. Applying 8 parts to the account's uploads broke
-/// them: SaveBigFilePart on a fresh upload DC connection failed with a broken pipe on every attempt,
-/// reproduced twice. Uploads and downloads share the same semaphore, so until that's split the
-/// account defaults to the library's own 2 parts, which is known to work in both directions.
+/// 512 KB is the protocol's own maximum for uploads (upload.saveBigFilePart requires
+/// 524288 % part_size == 0, i.e. part_size can only divide 512 KB), even though downloads
+/// (upload.getFile) allow up to 1 MB. FilePartSize is one property shared by both directions on the
+/// same WTelegram.Client, unvalidated by the library, so setting it above 512 KB broke every upload
+/// through the account with a transport-level "Broken pipe" on the first request — confirmed by
+/// reverting the part size alone back to 512 KB with everything else unchanged, which fixed it.
+/// Concurrency was never the cause: the same failure reproduced at both 8 and 2 parallel transfers.
 /// </remarks>
 public static class TransferTuning
 {
+    private const int MaxFilePartSizeBytes = 512 * 1024;
+
     public static int ParallelTransfers(int defaultValue) =>
         int.TryParse(Environment.GetEnvironmentVariable("TELEGRAM_PARALLEL_TRANSFERS"), out var n) && n > 0
             ? n
             : defaultValue;
 
     public static int FilePartSizeBytes =>
-        (int.TryParse(Environment.GetEnvironmentVariable("TELEGRAM_FILE_PART_SIZE_KB"), out var kb) && kb > 0
-            ? kb
-            : 1024) * 1024;
+        Math.Min(
+            (int.TryParse(Environment.GetEnvironmentVariable("TELEGRAM_FILE_PART_SIZE_KB"), out var kb) && kb > 0
+                ? kb
+                : 512) * 1024,
+            MaxFilePartSizeBytes);
 
     public static void Apply(WTelegram.Client client, string who, int defaultParallelTransfers)
     {

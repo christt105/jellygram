@@ -83,7 +83,7 @@ public class UserClientService : IDisposable
 
         _sessionStream = File.Open(SessionPath, FileMode.Open, FileAccess.ReadWrite);
         _client = new WTelegram.Client(ConfigFunc, _sessionStream);
-        Bot.Utils.TransferTuning.Apply(_client, "UserClient", defaultParallelTransfers: 2);
+        Bot.Utils.TransferTuning.Apply(_client, "UserClient", defaultParallelTransfers: 8);
 
         try
         {
