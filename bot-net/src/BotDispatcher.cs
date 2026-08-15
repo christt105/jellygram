@@ -40,6 +40,9 @@ public class BotDispatcher
 
     public UserClientService? UserClient { get; }
 
+    /// <summary>Where <see cref="UploadService"/> collects the bot's own id for its uploads.</summary>
+    public UploadEchoRegistry UploadEchoes { get; } = new();
+
     public PendingActionHandler PendingActionHandler => _pendingActionHandler;
 
     public async Task InitBot()
@@ -69,7 +72,19 @@ public class BotDispatcher
             return;
         }
 
-        if (msg.Document != null || msg.Video != null) await _fileHandler.Handle(msg, type);
+        if (msg.Document != null || msg.Video != null)
+        {
+            // A file the account uploaded arrives here as an ordinary incoming document. The
+            // uploader is waiting for it to learn the bot's own id for the file, and registers
+            // it itself with both ids; handling it again would enqueue a second identification.
+            var incomingName = msg.Document?.FileName ?? msg.Video?.FileName;
+            var incomingSize = msg.Document?.FileSize ?? msg.Video?.FileSize ?? 0;
+
+            if (UploadEchoes.TryClaim(incomingName, incomingSize, msg.MessageId))
+                Log.Info($"Message {msg.MessageId} is the bot's copy of {incomingName}, uploaded by the account.");
+            else
+                await _fileHandler.Handle(msg, type);
+        }
 
         if (!string.IsNullOrEmpty(msg.Text))
         {

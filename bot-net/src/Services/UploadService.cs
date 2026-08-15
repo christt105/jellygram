@@ -69,19 +69,35 @@ public class ProgressStream : Stream
     public override void Write(byte[] buffer, int offset, int count) => _baseStream.Write(buffer, offset, count);
 }
 
+/// <summary>
+/// A stored file, as the two identities number it. <paramref name="MessageId"/> is the bot's
+/// own and is always there; <paramref name="UserMessageId"/> is only filled in when the account
+/// carried the upload, and merely makes reading the file back faster.
+/// </summary>
+public readonly record struct StoredUpload(int MessageId, int? UserMessageId);
+
 public class UploadService
 {
     private readonly WTelegram.Bot _bot;
     private readonly ApiClient _apiClient;
     private readonly TaskQueue _queue;
     private readonly UserClientService? _userClient;
+    private readonly UploadEchoRegistry? _echoes;
 
-    public UploadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null)
+    /// <summary>
+    /// How long to wait for the bot's copy of a file the account sent. It normally lands within
+    /// seconds of the send finishing; this only has to outlast a hiccup in the update stream.
+    /// </summary>
+    private static readonly TimeSpan EchoTimeout = TimeSpan.FromMinutes(2);
+
+    public UploadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue,
+        UserClientService? userClient = null, UploadEchoRegistry? echoes = null)
     {
         _bot = bot;
         _apiClient = apiClient;
         _queue = queue;
         _userClient = userClient;
+        _echoes = echoes;
     }
 
     public async Task PollAndProcessAsync(CancellationToken stoppingToken)
@@ -192,8 +208,12 @@ public class UploadService
 
                 Log.Info($"[Uploader] Processing file {fileIndex + 1}/{filesToUpload.Count}: {fileInfo.Name} ({fileSize} bytes)");
 
-                // Must track useUserClient in SendSingleFileWithRetryAsync — both disabled together.
-                var splitLimit = UserClientService.FallbackSplitLimitBytes;
+                // The account can send parts the bot API would refuse, so the size a file is cut
+                // into follows whichever identity is going to carry it.
+                var useUserClient = _echoes != null && _userClient?.IsAuthenticated == true;
+                var splitLimit = useUserClient
+                    ? _userClient!.SplitLimitBytes
+                    : UserClientService.FallbackSplitLimitBytes;
 
                 if (fileSize > splitLimit)
                 {
@@ -221,22 +241,23 @@ public class UploadService
                         Log.Info($"[Uploader] Uploading part {partIndex + 1}/{parts.Count}: {partInfo.Name}");
 
                         long[] pp = [totalUploadedBytes, lastReportedTime];
-                        var (msgId, storagePeer) = await SendSingleFileWithRetryAsync(
+                        var stored = await SendSingleFileWithRetryAsync(
                             partPath, partInfo.Name, "application/zip",
-                            task.Id, pp, totalBytesToUpload);
+                            task.Id, pp, totalBytesToUpload, useUserClient);
                         totalUploadedBytes = pp[0];
                         lastReportedTime = pp[1];
 
                         await _apiClient.UploadAsync(new UploadFile
                         {
-                            MessageId = msgId,
+                            MessageId = stored.MessageId,
+                            UserMessageId = stored.UserMessageId,
                             FileName = partInfo.Name,
                             FileSize = partInfo.Length,
                             MimeType = "application/zip",
                             UploadDate = DateTime.UtcNow.ToString("O"),
                             TmdbId = task.TmdbId,
                             TechnicalMetadata = partIndex == 0 ? technicalMetadata : null,
-                            StoragePeer = storagePeer
+                            StoragePeer = "bot"
                         });
                     }
                 }
@@ -246,22 +267,23 @@ public class UploadService
                     var mime = GuessMime(videoFile);
 
                     long[] dp = [totalUploadedBytes, lastReportedTime];
-                    var (msgId, storagePeer) = await SendSingleFileWithRetryAsync(
+                    var stored = await SendSingleFileWithRetryAsync(
                         videoFile, fileInfo.Name, mime,
-                        task.Id, dp, totalBytesToUpload);
+                        task.Id, dp, totalBytesToUpload, useUserClient);
                     totalUploadedBytes = dp[0];
                     lastReportedTime = dp[1];
 
                     await _apiClient.UploadAsync(new UploadFile
                     {
-                        MessageId = msgId,
+                        MessageId = stored.MessageId,
+                        UserMessageId = stored.UserMessageId,
                         FileName = fileInfo.Name,
                         FileSize = fileInfo.Length,
                         MimeType = mime,
                         UploadDate = DateTime.UtcNow.ToString("O"),
                         TmdbId = task.TmdbId,
                         TechnicalMetadata = technicalMetadata,
-                        StoragePeer = storagePeer
+                        StoragePeer = "bot"
                     });
                 }
             }
@@ -293,14 +315,12 @@ public class UploadService
     }
 
     // progress[0] = totalUploadedBytes, progress[1] = lastReportedTime
-    private async Task<(int messageId, string storagePeer)> SendSingleFileWithRetryAsync(
+    private async Task<StoredUpload> SendSingleFileWithRetryAsync(
         string filePath, string fileName, string mimeType,
-        int taskId, long[] progress, long totalBytesToUpload)
+        int taskId, long[] progress, long totalBytesToUpload, bool useUserClient)
     {
         const int maxRetries = 3;
         int attempt = 0;
-        // Disabled until task 30db3o (vault): breaks the message_id invariant otherwise.
-        bool useUserClient = false;
 
         while (true)
         {
@@ -310,7 +330,11 @@ public class UploadService
             {
                 if (useUserClient)
                 {
-                    var msgId = await _userClient!.SendDocumentToSavedAsync(filePath, fileName, mimeType,
+                    // Registered before sending: Telegram can deliver the bot its copy while the
+                    // account is still finishing the call that reports the account's own id.
+                    using var echo = _echoes!.Expect(fileName, new FileInfo(filePath).Length);
+
+                    var userMessageId = await _userClient!.SendDocumentToBotChatAsync(filePath, fileName, mimeType,
                         (transmitted, totalSize) =>
                         {
                             var delta = transmitted - lastBytes;
@@ -326,7 +350,16 @@ public class UploadService
                                 _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
                             }
                         });
-                    return (msgId, "saved");
+
+                    var botMessageId = await echo.WaitAsync(EchoTimeout)
+                        ?? throw new UploadEchoMissingException(
+                            $"The account uploaded {fileName} but the bot did not see its copy within " +
+                            $"{EchoTimeout.TotalMinutes:F0} minutes, so there is no id it could read the file " +
+                            "back with. The file is in the chat: check whether it arrived late and was " +
+                            "registered on its own before uploading it again.");
+
+                    Log.Info($"[Uploader] {fileName} stored as {botMessageId} (bot) / {userMessageId} (account).");
+                    return new StoredUpload(botMessageId, userMessageId);
                 }
                 else
                 {
@@ -355,8 +388,14 @@ public class UploadService
                             caption: fileName
                         );
                     }
-                    return (sent!.MessageId, "bot");
+                    return new StoredUpload(sent!.MessageId, null);
                 }
+            }
+            catch (UploadEchoMissingException)
+            {
+                // The file did reach the chat, only unannounced. Sending it again would leave
+                // two copies behind, so this one is not worth a retry.
+                throw;
             }
             catch (Exception ex)
             {

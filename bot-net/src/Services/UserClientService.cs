@@ -12,6 +12,7 @@ public class UserClientService : IDisposable
 {
     private WTelegram.Client? _client;
     private Stream? _sessionStream;
+    private InputPeerUser? _botPeer;
 
     private int _apiId;
     private string _apiHash = "";
@@ -67,13 +68,15 @@ public class UserClientService : IDisposable
         _sessionStream?.Dispose();
         _client = null;
         _sessionStream = null;
+        _botPeer = null;
     }
 
     /// <summary>
-    /// Tries to restore a saved session on startup. Returns false if no session exists
-    /// or if it has expired (caller should prompt /auth).
+    /// Tries to restore a saved session on startup. Returns false if no session exists,
+    /// if it has expired, or if the bot chat cannot be resolved (caller should prompt /auth).
+    /// A false here is never fatal: everything falls back to the bot's own transfers.
     /// </summary>
-    public async Task<bool> TryResumeSessionAsync(int apiId, string apiHash)
+    public async Task<bool> TryResumeSessionAsync(int apiId, string apiHash, string botUsername)
     {
         if (!File.Exists(SessionPath))
             return false;
@@ -88,9 +91,16 @@ public class UserClientService : IDisposable
         try
         {
             var user = await _client.LoginUserIfNeeded();
+
+            // The account and the bot are the two participants of the same private chat, which
+            // is where every file is stored. Without that peer the account has nothing to say.
+            var resolved = await _client.Contacts_ResolveUsername(botUsername.TrimStart('@'));
+            var botUser = resolved.users.Values.First();
+            _botPeer = new InputPeerUser(botUser.id, botUser.access_hash);
+
             IsAuthenticated = true;
             IsPremium = (user.flags & User.Flags.premium) != 0;
-            Log.Info($"[UserClient] Session restored. Premium={IsPremium}");
+            Log.Info($"[UserClient] Session restored. Premium={IsPremium}, chat with @{botUsername} resolved.");
             return true;
         }
         catch (Exception ex)
@@ -104,9 +114,12 @@ public class UserClientService : IDisposable
     // ── File operations ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Uploads a file to Saved Messages. Returns the message ID.
+    /// Uploads a file to the chat the account shares with the bot, and returns the message ID
+    /// <b>in the account's own numbering</b>. The bot knows the very same message under a
+    /// different ID, which it only learns from the copy Telegram delivers to it; storing this
+    /// one alone would leave a file the bot could never read.
     /// </summary>
-    public async Task<int> SendDocumentToSavedAsync(
+    public async Task<int> SendDocumentToBotChatAsync(
         string filePath,
         string fileName,
         string mimeType,
@@ -119,20 +132,30 @@ public class UserClientService : IDisposable
             : null;
 
         var inputFile = await _client!.UploadFileAsync(filePath, cb);
-        var sent = await _client.SendMediaAsync(InputPeer.Self, fileName, inputFile, mimeType);
+        var sent = await _client.SendMediaAsync(_botPeer!, fileName, inputFile, mimeType);
         return sent.id;
     }
 
     /// <summary>
-    /// Fetches a document from Saved Messages by message ID.
+    /// Fetches a document from the bot chat by the message ID the account numbers it with.
     /// Returns null if the message doesn't exist or has no document.
     /// </summary>
-    public async Task<Document?> GetDocumentFromSavedAsync(int messageId)
+    public Task<Document?> GetDocumentFromBotChatAsync(int messageId) =>
+        GetDocumentAsync(_botPeer!, messageId);
+
+    /// <summary>
+    /// Fetches a document from Saved Messages by message ID, for the handful of files older
+    /// builds parked there. Returns null if the message doesn't exist or has no document.
+    /// </summary>
+    public Task<Document?> GetDocumentFromSavedAsync(int messageId) =>
+        GetDocumentAsync(InputPeer.Self, messageId);
+
+    private async Task<Document?> GetDocumentAsync(InputPeer peer, int messageId)
     {
         EnsureReady();
 
         var result = await _client!.GetMessages(
-            InputPeer.Self,
+            peer,
             new InputMessage[] { new InputMessageID { id = messageId } }
         );
 
@@ -159,7 +182,7 @@ public class UserClientService : IDisposable
 
     private void EnsureReady()
     {
-        if (!IsAuthenticated || _client == null)
+        if (!IsAuthenticated || _client == null || _botPeer == null)
             throw new InvalidOperationException("User client is not authenticated.");
     }
 
