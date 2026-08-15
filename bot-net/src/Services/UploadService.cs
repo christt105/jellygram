@@ -192,7 +192,8 @@ public class UploadService
 
                 Log.Info($"[Uploader] Processing file {fileIndex + 1}/{filesToUpload.Count}: {fileInfo.Name} ({fileSize} bytes)");
 
-                var splitLimit = _userClient?.SplitLimitBytes ?? UserClientService.FallbackSplitLimitBytes;
+                // Must track useUserClient in SendSingleFileWithRetryAsync — both disabled together.
+                var splitLimit = UserClientService.FallbackSplitLimitBytes;
 
                 if (fileSize > splitLimit)
                 {
@@ -298,7 +299,8 @@ public class UploadService
     {
         const int maxRetries = 3;
         int attempt = 0;
-        bool useUserClient = _userClient?.IsAuthenticated == true;
+        // Disabled until task 30db3o (vault): breaks the message_id invariant otherwise.
+        bool useUserClient = false;
 
         while (true)
         {
