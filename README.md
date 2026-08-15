@@ -147,6 +147,8 @@ Once the containers are up, control the worker from Telegram (as the user in `TE
 
 Transfers run over the bot API by default, which caps each part at 1.95 GB. If you also log in with a personal Telegram account, `bot-net` uses it for uploads and downloads instead; with Telegram Premium the part size goes up to 3.9 GB, which means fewer `7z` parts per file and faster transfers.
 
+Files are stored in the chat between you and the bot either way, and every one of them is recorded under the bot's own message id. The account's id for the same message is kept alongside it purely as a shortcut, so an expired or deleted session only costs speed: downloads fall back to the bot and the archive stays readable.
+
 The login has to be done **from a terminal on the server**, not from the Telegram chat. Telegram's anti-scam protection invalidates any login code that its servers see your account send in a message, so a code typed into the bot is rejected with *"Incomplete login attempt … the code was shared by your account previously"*.
 
 1. From the directory where the stack runs (the one holding your `.env`):
