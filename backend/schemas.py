@@ -14,6 +14,7 @@ class UploadIn(BaseModel):
     created_at: str | None = None  # ISO format date string
     tmdb_id: int | None = None     # Pre-identified TMDB ID
     technical_metadata: str | None = None
+    storage_peer: str = "bot"      # "bot" = bot-owner chat, "saved" = user's Saved Messages
 
 class ItemOut(BaseModel):
     id: int

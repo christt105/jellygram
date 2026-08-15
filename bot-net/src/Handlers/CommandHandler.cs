@@ -15,7 +15,7 @@ public class CommandHandler
     {
         _bot = bot;
 
-        var commands = new ICommand[]
+        var commands = new List<ICommand>
         {
             new StartCommand(bot.Bot),
             new VersionCommand(bot.Bot),
@@ -32,7 +32,10 @@ public class CommandHandler
             new ImportCommand(bot)
         };
 
-        commands = commands.Append(new HelpCommand(bot.Bot, commands)).ToArray();
+        if (bot.UserClient != null)
+            commands.Add(new AuthCommand(bot.Bot, bot.UserClient));
+
+        commands.Add(new HelpCommand(bot.Bot, commands.ToArray()));
 
         _commands = commands.ToDictionary(c => c.Key, c => c);
 

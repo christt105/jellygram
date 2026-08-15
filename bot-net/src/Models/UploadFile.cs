@@ -17,4 +17,6 @@ public class UploadFile
     [JsonPropertyName("tmdb_id")] public int? TmdbId { get; set; }
 
     [JsonPropertyName("technical_metadata")] public string? TechnicalMetadata { get; set; }
+
+    [JsonPropertyName("storage_peer")] public string StoragePeer { get; set; } = "bot";
 }

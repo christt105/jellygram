@@ -74,12 +74,14 @@ public class UploadService
     private readonly WTelegram.Bot _bot;
     private readonly ApiClient _apiClient;
     private readonly TaskQueue _queue;
+    private readonly UserClientService? _userClient;
 
-    public UploadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue)
+    public UploadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null)
     {
         _bot = bot;
         _apiClient = apiClient;
         _queue = queue;
+        _userClient = userClient;
     }
 
     public async Task PollAndProcessAsync(CancellationToken stoppingToken)
@@ -190,24 +192,20 @@ public class UploadService
 
                 Log.Info($"[Uploader] Processing file {fileIndex + 1}/{filesToUpload.Count}: {fileInfo.Name} ({fileSize} bytes)");
 
-                // 2GB limit (Telegram non-Premium)
-                const long splitLimit = 1950000000;
+                // Must track useUserClient in SendSingleFileWithRetryAsync — both disabled together.
+                var splitLimit = UserClientService.FallbackSplitLimitBytes;
 
                 if (fileSize > splitLimit)
                 {
-                    // Split file using 7z store-only (mx0)
-                    Log.Info($"[Uploader] File is larger than 4GB. Splitting with 7z store-only...");
+                    Log.Info($"[Uploader] File exceeds split limit ({splitLimit / 1_000_000} MB). Splitting with 7z store-only...");
                     var partsDir = Path.Combine(tempDir, $"file_{fileIndex}");
                     if (Directory.Exists(partsDir))
-                    {
                         Directory.Delete(partsDir, true);
-                    }
                     Directory.CreateDirectory(partsDir);
 
                     var archiveBaseName = Path.GetFileNameWithoutExtension(videoFile) + ".zip";
                     var archivePath = Path.Combine(partsDir, archiveBaseName);
-
-                    await SplitAndPackage(videoFile, archivePath);
+                    await SplitAndPackage(videoFile, archivePath, splitLimit);
 
                     var parts = Directory.GetFiles(partsDir, "*.*")
                         .Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
@@ -216,153 +214,55 @@ public class UploadService
 
                     Log.Info($"[Uploader] Split complete. Created {parts.Count} parts.");
 
-                    // Upload parts
                     for (int partIndex = 0; partIndex < parts.Count; partIndex++)
                     {
                         var partPath = parts[partIndex];
                         var partInfo = new FileInfo(partPath);
-
                         Log.Info($"[Uploader] Uploading part {partIndex + 1}/{parts.Count}: {partInfo.Name}");
-                        
-                        int maxRetries = 3;
-                        int attempt = 0;
-                        bool uploadSuccess = false;
-                        WTelegram.Types.Message? sent = null;
 
-                        while (attempt < maxRetries && !uploadSuccess)
+                        long[] pp = [totalUploadedBytes, lastReportedTime];
+                        var (msgId, storagePeer) = await SendSingleFileWithRetryAsync(
+                            partPath, partInfo.Name, "application/zip",
+                            task.Id, pp, totalBytesToUpload);
+                        totalUploadedBytes = pp[0];
+                        lastReportedTime = pp[1];
+
+                        await _apiClient.UploadAsync(new UploadFile
                         {
-                            attempt++;
-                            long lastBytes = 0;
-                            try
-                            {
-                                await using (var fileStream = partInfo.OpenRead())
-                                {
-                                    var progressStream = new ProgressStream(fileStream, (transmitted) =>
-                                    {
-                                        var delta = transmitted - lastBytes;
-                                        lastBytes = transmitted;
-                                        Interlocked.Add(ref totalUploadedBytes, delta);
-
-                                        var nowTicks = DateTime.UtcNow.Ticks;
-                                        var elapsedSeconds = (nowTicks - lastReportedTime) / (double)TimeSpan.TicksPerSecond;
-
-                                        if (elapsedSeconds >= 3 || totalUploadedBytes == totalBytesToUpload)
-                                        {
-                                            lastReportedTime = nowTicks;
-                                            var percent = (int)(totalUploadedBytes * 100 / totalBytesToUpload);
-                                            _ = _apiClient.UpdateUploadStatusAsync(task.Id, "uploading", percent);
-                                        }
-                                    });
-
-                                    sent = await _bot.SendDocument(
-                                        AuthConfig.OwnerUserId,
-                                        new InputFileStream(progressStream, partInfo.Name),
-                                        caption: partInfo.Name
-                                    );
-                                }
-                                uploadSuccess = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                Log.Error($"[Uploader] Attempt {attempt}/{maxRetries} failed to upload part {partInfo.Name}: {ex.Message}");
-                                Interlocked.Add(ref totalUploadedBytes, -lastBytes);
-
-                                if (attempt >= maxRetries)
-                                {
-                                    throw;
-                                }
-
-                                var delayMs = (int)Math.Pow(2, attempt) * 1000;
-                                Log.Info($"[Uploader] Waiting {delayMs}ms before retrying...");
-                                await Task.Delay(delayMs);
-                            }
-                        }
-
-                        // Register part in DB
-                        var uploadFile = new UploadFile
-                        {
-                            MessageId = sent!.MessageId,
+                            MessageId = msgId,
                             FileName = partInfo.Name,
                             FileSize = partInfo.Length,
                             MimeType = "application/zip",
                             UploadDate = DateTime.UtcNow.ToString("O"),
                             TmdbId = task.TmdbId,
-                            TechnicalMetadata = partIndex == 0 ? technicalMetadata : null // Only attach to first part
-                        };
-                        await _apiClient.UploadAsync(uploadFile);
+                            TechnicalMetadata = partIndex == 0 ? technicalMetadata : null,
+                            StoragePeer = storagePeer
+                        });
                     }
                 }
                 else
                 {
-                    // Upload file directly
-                    Log.Info($"[Uploader] File is under 4GB. Uploading directly...");
-                    
-                    int maxRetries = 3;
-                    int attempt = 0;
-                    bool uploadSuccess = false;
-                    WTelegram.Types.Message? sent = null;
+                    Log.Info($"[Uploader] File is within limit. Uploading directly...");
+                    var mime = GuessMime(videoFile);
 
-                    while (attempt < maxRetries && !uploadSuccess)
+                    long[] dp = [totalUploadedBytes, lastReportedTime];
+                    var (msgId, storagePeer) = await SendSingleFileWithRetryAsync(
+                        videoFile, fileInfo.Name, mime,
+                        task.Id, dp, totalBytesToUpload);
+                    totalUploadedBytes = dp[0];
+                    lastReportedTime = dp[1];
+
+                    await _apiClient.UploadAsync(new UploadFile
                     {
-                        attempt++;
-                        long lastBytes = 0;
-                        try
-                        {
-                            await using (var fileStream = fileInfo.OpenRead())
-                            {
-                                var progressStream = new ProgressStream(fileStream, (transmitted) =>
-                                {
-                                    var delta = transmitted - lastBytes;
-                                    lastBytes = transmitted;
-                                    Interlocked.Add(ref totalUploadedBytes, delta);
-
-                                    var nowTicks = DateTime.UtcNow.Ticks;
-                                    var elapsedSeconds = (nowTicks - lastReportedTime) / (double)TimeSpan.TicksPerSecond;
-
-                                    if (elapsedSeconds >= 3 || totalUploadedBytes == totalBytesToUpload)
-                                    {
-                                        lastReportedTime = nowTicks;
-                                        var percent = (int)(totalUploadedBytes * 100 / totalBytesToUpload);
-                                        _ = _apiClient.UpdateUploadStatusAsync(task.Id, "uploading", percent);
-                                    }
-                                });
-
-                                sent = await _bot.SendDocument(
-                                    AuthConfig.OwnerUserId,
-                                    new InputFileStream(progressStream, fileInfo.Name),
-                                    caption: fileInfo.Name
-                                );
-                            }
-                            uploadSuccess = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            Log.Error($"[Uploader] Attempt {attempt}/{maxRetries} failed to upload {fileInfo.Name}: {ex.Message}");
-                            Interlocked.Add(ref totalUploadedBytes, -lastBytes);
-
-                            if (attempt >= maxRetries)
-                            {
-                                throw;
-                            }
-
-                            var delayMs = (int)Math.Pow(2, attempt) * 1000;
-                            Log.Info($"[Uploader] Waiting {delayMs}ms before retrying...");
-                            await Task.Delay(delayMs);
-                        }
-                    }
-
-                    // Register in DB
-                    var uploadFile = new UploadFile
-                    {
-                        MessageId = sent!.MessageId,
+                        MessageId = msgId,
                         FileName = fileInfo.Name,
                         FileSize = fileInfo.Length,
-                        MimeType = GuessMime(videoFile),
+                        MimeType = mime,
                         UploadDate = DateTime.UtcNow.ToString("O"),
                         TmdbId = task.TmdbId,
-                        TechnicalMetadata = technicalMetadata
-                    };
-                    await _apiClient.UploadAsync(uploadFile);
+                        TechnicalMetadata = technicalMetadata,
+                        StoragePeer = storagePeer
+                    });
                 }
             }
 
@@ -392,13 +292,91 @@ public class UploadService
         }
     }
 
-    private static async Task SplitAndPackage(string filePath, string archivePath)
+    // progress[0] = totalUploadedBytes, progress[1] = lastReportedTime
+    private async Task<(int messageId, string storagePeer)> SendSingleFileWithRetryAsync(
+        string filePath, string fileName, string mimeType,
+        int taskId, long[] progress, long totalBytesToUpload)
     {
+        const int maxRetries = 3;
+        int attempt = 0;
+        // Disabled until task 30db3o (vault): breaks the message_id invariant otherwise.
+        bool useUserClient = false;
+
+        while (true)
+        {
+            attempt++;
+            long lastBytes = 0;
+            try
+            {
+                if (useUserClient)
+                {
+                    var msgId = await _userClient!.SendDocumentToSavedAsync(filePath, fileName, mimeType,
+                        (transmitted, totalSize) =>
+                        {
+                            var delta = transmitted - lastBytes;
+                            lastBytes = transmitted;
+                            progress[0] += delta;
+
+                            var nowTicks = DateTime.UtcNow.Ticks;
+                            var elapsed = (nowTicks - progress[1]) / (double)TimeSpan.TicksPerSecond;
+                            if (elapsed >= 3 || progress[0] == totalBytesToUpload)
+                            {
+                                progress[1] = nowTicks;
+                                var percent = (int)(progress[0] * 100 / totalBytesToUpload);
+                                _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
+                            }
+                        });
+                    return (msgId, "saved");
+                }
+                else
+                {
+                    WTelegram.Types.Message? sent;
+                    await using (var fileStream = File.OpenRead(filePath))
+                    {
+                        var progressStream = new ProgressStream(fileStream, transmitted =>
+                        {
+                            var delta = transmitted - lastBytes;
+                            lastBytes = transmitted;
+                            progress[0] += delta;
+
+                            var nowTicks = DateTime.UtcNow.Ticks;
+                            var elapsed = (nowTicks - progress[1]) / (double)TimeSpan.TicksPerSecond;
+                            if (elapsed >= 3 || progress[0] == totalBytesToUpload)
+                            {
+                                progress[1] = nowTicks;
+                                var percent = (int)(progress[0] * 100 / totalBytesToUpload);
+                                _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
+                            }
+                        });
+
+                        sent = await _bot.SendDocument(
+                            AuthConfig.OwnerUserId,
+                            new InputFileStream(progressStream, fileName),
+                            caption: fileName
+                        );
+                    }
+                    return (sent!.MessageId, "bot");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Uploader] Attempt {attempt}/{maxRetries} failed for {fileName}: {ex.Message}");
+                progress[0] -= lastBytes;
+
+                if (attempt >= maxRetries) throw;
+
+                await Task.Delay((int)Math.Pow(2, attempt) * 1000);
+            }
+        }
+    }
+
+    private static async Task SplitAndPackage(string filePath, string archivePath, long splitLimitBytes)
+    {
+        var partSizeMb = splitLimitBytes / 1_000_000;
         var startInfo = new ProcessStartInfo
         {
             FileName = "7z",
-            // mx0 = store only, v1900m = split in 1900MB parts
-            Arguments = $"a -mx0 -v1900m \"{archivePath}\" \"{filePath}\"",
+            Arguments = $"a -mx0 -v{partSizeMb}m \"{archivePath}\" \"{filePath}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

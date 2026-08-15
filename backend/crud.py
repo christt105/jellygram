@@ -156,7 +156,7 @@ def get_or_create_collection(session: Session, filename: str, mime_type: str, te
     session.refresh(collection)
     return collection
 
-def create_file(session: Session, message_id, filename, filesize, mime_type, created_at, tmdb_id=None, technical_metadata=None):
+def create_file(session: Session, message_id, filename, filesize, mime_type, created_at, tmdb_id=None, technical_metadata=None, storage_peer="bot"):
     existing = session.exec(select(File).where(File.message_id == message_id)).first()
     if existing:
         return existing, session.get(Collection, existing.collection_id)
@@ -170,7 +170,8 @@ def create_file(session: Session, message_id, filename, filesize, mime_type, cre
         filesize=filesize,
         mime_type=mime_type,
         created_at=file_created_at,
-        collection_id=collection.id
+        collection_id=collection.id,
+        storage_peer=storage_peer
     )
     session.add(file)
     session.commit()

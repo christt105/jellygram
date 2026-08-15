@@ -18,11 +18,12 @@ public class BotDispatcher
     private readonly MessageHandler _messageHandler;
     private readonly PendingActionHandler _pendingActionHandler;
 
-    public BotDispatcher(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue)
+    public BotDispatcher(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null)
     {
         Bot = bot;
         ApiClient = apiClient;
         Queue = queue;
+        UserClient = userClient;
 
         _pendingActionHandler = new PendingActionHandler(Bot);
         _commandHandler = new CommandHandler(this);
@@ -36,6 +37,8 @@ public class BotDispatcher
     public ApiClient ApiClient { get; }
 
     public TaskQueue Queue { get; }
+
+    public UserClientService? UserClient { get; }
 
     public PendingActionHandler PendingActionHandler => _pendingActionHandler;
 

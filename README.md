@@ -32,7 +32,7 @@ User ─▶ web (Vue) ─▶ backend (FastAPI) ─▶ SQLite / TMDB
                                        ─▶ Host disk (Jellyfin media)
 ```
 
-The `bot-net` worker authenticates as a Telegram **bot**, which caps file transfers at 2 GB; files larger than that are split into **1.95 GB** parts with `7z` (store-only) on upload and rejoined on download.
+The `bot-net` worker authenticates as a Telegram **bot**, which caps file transfers at 2 GB; files larger than that are split into **1.95 GB** parts with `7z` (store-only) on upload and rejoined on download. Optionally it can also log in as a Telegram **user account**; if that account has Premium, parts go up to 3.9 GB — see [Telegram user account](#telegram-user-account-optional).
 
 ## Prerequisites
 
@@ -88,6 +88,7 @@ All configuration lives in `.env` (see `.env.example` for the template).
 | `IMPORT_MOVIES_DIR`     | Host path for the movies library, bind-mounted into `bot-net` at `/data/import/movies`.         |
 | `IMPORT_SHOWS_DIR`      | Host path for the shows library, bind-mounted into `bot-net` at `/data/import/shows`.            |
 | `JELLYFIN_PATH_MAP`     | Maps the paths Jellyfin reports onto `bot-net`'s own paths, as `jellyfin_path:container_path` pairs separated by commas. Only needed when Jellyfin sees the library under different paths than the host — see [Path mapping](#path-mapping). |
+| `UPLOAD_SPLIT_LIMIT_MB` | Optional override for the part size used when splitting large files. Defaults to 1950 (bot API), or 3900 when a Premium user account session is active. |
 | `PUID` / `PGID`         | User/group IDs the `backend` and `bot-net` containers run as, so they can write to the host media directories (defaults `1000:1000`). |
 | `WEB_PORT`              | Host port for the web panel (defaults `5173`). Change it if the port is already in use.          |
 | `BACKEND_PORT`          | Host port for the backend API (defaults `8005`). The web container reads it at start.           |
@@ -140,12 +141,32 @@ Once the containers are up, control the worker from Telegram (as the user in `TE
 | `/serie <series-id>`       | Show a series' details.                                      |
 | `/orphans`                 | List collections still missing TMDB identification.         |
 | `/queue`                   | Show active upload and download transfers.                  |
+| `/auth`                    | Show whether a Telegram user account session is active.     |
+
+## Telegram user account (optional)
+
+Transfers run over the bot API by default, which caps each part at 1.95 GB. If you also log in with a personal Telegram account, `bot-net` uses it for uploads and downloads instead; with Telegram Premium the part size goes up to 3.9 GB, which means fewer `7z` parts per file and faster transfers.
+
+The login has to be done **from a terminal on the server**, not from the Telegram chat. Telegram's anti-scam protection invalidates any login code that its servers see your account send in a message, so a code typed into the bot is rejected with *"Incomplete login attempt … the code was shared by your account previously"*.
+
+1. From the directory where the stack runs (the one holding your `.env`):
+   ```bash
+   docker compose run --rm -it bot-net auth
+   ```
+2. Enter the phone number, then the verification code Telegram sends you, and the two-factor cloud password if the account has one.
+3. Restart the worker so it picks up the new session:
+   ```bash
+   docker compose restart bot-net
+   ```
+4. Check it from Telegram with `/auth`.
+
+The session is written to `./appdata/bot-net/user_client.session` and reused on every start, so this is a one-off. Run the same command again to re-authenticate — the current session is only replaced once the new login succeeds. Deleting that file reverts the worker to the bot API limits.
 
 ## Data & Persistence
 
 All persistent application state is stored on the host under `./appdata`:
 - `./appdata/backend`: SQLite database storing library metadata, task queues, and media indexes.
-- `./appdata/bot-net`: Telegram session state and worker runtime cache.
+- `./appdata/bot-net`: Telegram session state (bot and, if configured, user account) and worker runtime cache.
 
 Make sure to back up the `./appdata` directory when migrating servers or updating containers.
 
@@ -157,6 +178,7 @@ Make sure to back up the `./appdata` directory when migrating servers or updatin
 
 - **Permission errors writing to media folders**: Ensure `PUID` and `PGID` in `.env` match the Linux user/group that owns `IMPORT_MOVIES_DIR` and `IMPORT_SHOWS_DIR`.
 - **Uploads to Telegram fail with `Local file or directory not found`**: Jellyfin reports the file under a path `bot-net` cannot resolve. Set `JELLYFIN_PATH_MAP` — see [Path mapping](#path-mapping).
+- **"Incomplete login attempt" from Telegram when authenticating a user account**: the verification code was typed into a Telegram chat, which invalidates it. Log in from the server terminal instead — see [Telegram user account](#telegram-user-account-optional).
 - **Web UI settings or backend port updates not taking effect**: the web reads them at container start. Recreate the web container after changing `.env`:
   ```bash
   docker compose up -d web

@@ -10,12 +10,14 @@ public class DownloadService
     private readonly WTelegram.Bot _bot;
     private readonly ApiClient _apiClient;
     private readonly TaskQueue _queue;
+    private readonly UserClientService? _userClient;
 
-    public DownloadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue)
+    public DownloadService(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null)
     {
         _bot = bot;
         _apiClient = apiClient;
         _queue = queue;
+        _userClient = userClient;
     }
 
     public async Task PollAndProcessAsync(CancellationToken stoppingToken)
@@ -67,28 +69,36 @@ public class DownloadService
             var totalSize = task.Files.Sum(f => f.Filesize);
             long totalDownloaded = 0;
             long lastReportedTime = DateTime.UtcNow.Ticks;
+            var taskStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             foreach (var file in task.Files)
             {
-                Log.Info($"[Downloader] Fetching message {file.MessageId} for file {file.Filename}");
-                var messages = await _bot.GetMessagesById(AuthConfig.OwnerUserId, new[] { file.MessageId });
-                var msg = messages.FirstOrDefault();
-                if (msg == null || (msg.Document == null && msg.Video == null))
-                    throw new Exception($"Message {file.MessageId} not found or has no document/video.");
+                Log.Info($"[Downloader] Fetching message {file.MessageId} for file {file.Filename} (peer={file.StoragePeer})");
+                var fileStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                var tlMessage = msg.TLMessage as TL.Message;
-                if (tlMessage?.media == null)
-                    throw new Exception($"Message {file.MessageId} has no media in TLMessage.");
-
-                TL.Document? doc = null;
-                if (tlMessage.media is MessageMediaDocument mmd)
+                TL.Document? doc;
+                if (file.StoragePeer == "saved" && _userClient?.IsAuthenticated == true)
                 {
-                    doc = mmd.document as TL.Document;
+                    doc = await _userClient.GetDocumentFromSavedAsync(file.MessageId)
+                        ?? throw new Exception($"Message {file.MessageId} not found in Saved Messages.");
                 }
-
-                if (doc == null)
+                else
                 {
-                    throw new Exception($"Message {file.MessageId} media document is null.");
+                    var messages = await _bot.GetMessagesById(AuthConfig.OwnerUserId, new[] { file.MessageId });
+                    var msg = messages.FirstOrDefault();
+                    if (msg == null || (msg.Document == null && msg.Video == null))
+                        throw new Exception($"Message {file.MessageId} not found or has no document/video.");
+
+                    var tlMessage = msg.TLMessage as TL.Message;
+                    if (tlMessage?.media == null)
+                        throw new Exception($"Message {file.MessageId} has no media in TLMessage.");
+
+                    doc = null;
+                    if (tlMessage.media is MessageMediaDocument mmd)
+                        doc = mmd.document as TL.Document;
+
+                    if (doc == null)
+                        throw new Exception($"Message {file.MessageId} media document is null.");
                 }
 
                 var filePath = Path.Combine(tempDir, file.Filename);
@@ -106,7 +116,7 @@ public class DownloadService
                     {
                         await using (var fileStream = System.IO.File.Create(filePath))
                         {
-                            await _bot.Client.DownloadFileAsync(doc, fileStream, null, (transmitted, size) =>
+                            void OnProgress(long transmitted, long size)
                             {
                                 var delta = transmitted - lastBytes;
                                 lastBytes = transmitted;
@@ -121,7 +131,12 @@ public class DownloadService
                                     var percent = (int)(totalDownloaded * 100 / totalSize);
                                     _ = _apiClient.UpdateDownloadStatusAsync(task.TaskId, "downloading", percent);
                                 }
-                            });
+                            }
+
+                            if (file.StoragePeer == "saved" && _userClient?.IsAuthenticated == true)
+                                await _userClient.DownloadDocumentAsync(doc, fileStream, OnProgress);
+                            else
+                                await _bot.Client.DownloadFileAsync(doc, fileStream, null, OnProgress);
                         }
                         downloadSuccess = true;
                     }
@@ -130,17 +145,18 @@ public class DownloadService
                         Log.Error($"[Downloader] Attempt {attempt}/{maxRetries} failed to download {file.Filename}: {ex.Message}");
                         Interlocked.Add(ref totalDownloaded, -lastBytes);
 
-                        if (attempt >= maxRetries)
-                        {
-                            throw;
-                        }
+                        if (attempt >= maxRetries) throw;
 
                         var delayMs = (int)Math.Pow(2, attempt) * 1000;
                         Log.Info($"[Downloader] Waiting {delayMs}ms before retrying...");
                         await Task.Delay(delayMs);
                     }
                 }
-                Log.Info($"[Downloader] Finished downloading {file.Filename}");
+                fileStopwatch.Stop();
+                var fileMb = file.Filesize / 1_000_000.0;
+                var fileSec = fileStopwatch.Elapsed.TotalSeconds;
+                var fileMbps = fileSec > 0 ? fileMb / fileSec : 0;
+                Log.Info($"[Downloader] Finished {file.Filename} — {fileMb:F1} MB in {fileSec:F1}s ({fileMbps:F1} MB/s) via {file.StoragePeer}");
             }
 
             // 3. Check and extract if it's an archive
@@ -231,7 +247,11 @@ public class DownloadService
 
             // 7. Update Status
             await _apiClient.UpdateDownloadStatusAsync(task.TaskId, "completed", 100, localPath: fullPath);
-            Log.Info($"[Downloader] Download task {task.TaskId} completed successfully.");
+            taskStopwatch.Stop();
+            var totalMb = totalSize / 1_000_000.0;
+            var totalSec = taskStopwatch.Elapsed.TotalSeconds;
+            var totalMbps = totalSec > 0 ? totalMb / totalSec : 0;
+            Log.Info($"[Downloader] Task {task.TaskId} done — {totalMb:F1} MB in {totalSec:F1}s ({totalMbps:F1} MB/s avg)");
         }
         catch (Exception ex)
         {

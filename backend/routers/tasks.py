@@ -204,7 +204,8 @@ def list_pending_downloads(session: Session = Depends(get_session)):
                     "id": f.id,
                     "message_id": f.message_id,
                     "filename": f.filename,
-                    "filesize": f.filesize
+                    "filesize": f.filesize,
+                    "storage_peer": f.storage_peer
                 }
                 for f in coll.files
             ]

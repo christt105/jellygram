@@ -53,9 +53,9 @@ public class PendingActionHandler
         if (string.IsNullOrEmpty(msg.Text))
             return;
 
-        await CurrentAction.Callback?.Invoke(msg.Text)!;
-
+        var action = CurrentAction;
         Clear();
+        await action.Callback?.Invoke(msg.Text)!;
     }
 
     internal bool HasPendingAction()

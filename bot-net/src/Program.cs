@@ -3,6 +3,9 @@ using Bot.Services;
 using Bot.Utils;
 using Microsoft.AspNetCore.Mvc;
 
+if (args.Length > 0 && args[0] == "auth")
+    return await ConsoleAuth.RunAsync();
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<BotHolder>();
 builder.Services.AddHostedService<Worker>();
@@ -67,5 +70,6 @@ app.MapDelete("/local/collection/{collectionId:int}", async (int collectionId, I
 });
 
 await app.RunAsync();
+return 0;
 
 record ProbeRequest(string Path);

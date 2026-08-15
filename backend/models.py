@@ -107,6 +107,7 @@ class File(SQLModel, table=True):
     filesize: int
     mime_type: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+    storage_peer: str = Field(default="bot")
 
     collection_id: int = Field(foreign_key="collection.id")
     collection: "Collection" = Relationship(back_populates="files")
