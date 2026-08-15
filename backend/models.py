@@ -103,6 +103,9 @@ class Collection(SQLModel, table=True):
 class File(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     message_id: int
+    # The same message as seen by the user account, which numbers private chats on its own.
+    # Nullable and opportunistic: message_id alone always keeps the file readable by the bot.
+    user_message_id: Optional[int] = None
     filename: str
     filesize: int
     mime_type: Optional[str] = None

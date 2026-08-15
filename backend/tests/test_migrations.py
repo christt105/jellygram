@@ -37,6 +37,23 @@ def build_legacy_database(engine):
         )
 
 
+def build_database_with_a_file(engine, revision):
+    """
+    Replicates a deployment sitting on an older revision with files already stored:
+    the state every schema change has to reach without losing rows.
+    """
+    with engine.begin() as connection:
+        upgrade_to(connection, revision)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO collection (id, name, quality) VALUES (1, 'Mugen Train BDRip', '1080p')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO file (id, message_id, filename, filesize, created_at, collection_id, storage_peer)"
+            " VALUES (1, 4242, 'Mugen Train.mkv', 1048576, '2026-07-29 00:00:00', 1, 'bot')"
+        )
+
+
 def test_fresh_database_upgrades_to_head(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")
     with engine.begin() as connection:
@@ -56,6 +73,41 @@ def test_migrated_schema_matches_the_models(tmp_path):
     with engine.connect() as connection:
         context = MigrationContext.configure(connection)
         assert compare_metadata(context, SQLModel.metadata) == []
+
+
+def test_fresh_database_has_an_empty_user_message_id(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")
+    with engine.begin() as connection:
+        upgrade_to(connection, "head")
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO collection (id, name, quality) VALUES (1, 'Mugen Train BDRip', '1080p')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO file (message_id, filename, filesize, created_at, collection_id, storage_peer)"
+            " VALUES (7, 'Mugen Train.mkv', 1048576, '2026-07-29 00:00:00', 1, 'bot')"
+        )
+
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("select user_message_id from file").scalar() is None
+
+
+def test_user_message_id_adopts_existing_files_without_losing_data(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'stored.db'}")
+    build_database_with_a_file(engine, "0003_storage_peer")
+
+    with engine.begin() as connection:
+        upgrade_to(connection, "head")
+
+    with engine.connect() as connection:
+        message_id, user_message_id, filename = connection.exec_driver_sql(
+            "select message_id, user_message_id, filename from file"
+        ).one()
+        # The bot's own id is the one that must survive; the user account's starts out unknown.
+        assert message_id == 4242
+        assert user_message_id is None
+        assert filename == "Mugen Train.mkv"
 
 
 def test_legacy_database_needs_a_baseline_stamp(tmp_path):

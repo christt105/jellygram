@@ -48,6 +48,7 @@ def upload_endpoint(payload: UploadIn, session: Session = Depends(get_session)):
     file, collection = create_file(
         session,
         message_id=payload.message_id,
+        user_message_id=payload.user_message_id,
         filename=payload.filename,
         filesize=payload.filesize,
         mime_type=payload.mime_type,
