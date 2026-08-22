@@ -117,6 +117,14 @@ CLIENT_API_CONTRACT = [
     ("POST", "/downloads/enqueue/series/{series_id}"),
     ("POST", "/downloads/enqueue/series/{series_id}/season/{season_number}"),
     ("POST", "/downloads/enqueue/series/{series_id}/season/{season_number}/episode/{episode_number}"),
+    ("POST", "/watch/files"),
+    ("POST", "/watch/files/rename"),
+    ("POST", "/watch/files/missing"),
+    ("GET", "/watch"),
+    ("GET", "/watch/pending-notify"),
+    ("POST", "/watch/{watched_file_id}/confirm"),
+    ("POST", "/watch/{watched_file_id}/correct"),
+    ("PATCH", "/watch/{watched_file_id}"),
 ]
 
 

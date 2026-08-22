@@ -325,6 +325,57 @@ def identify_collection(
     return False
 
 
+def guess_watched_file(tmdb: TMDB, filename: str) -> Dict[str, Any]:
+    """Guess a watched file's media identity, reusing the same parsing/matching
+    pipeline as the Telegram upload path (TMDB.clean_filename/identify_by_filename).
+
+    Season/episode always come straight from the filename regex (clean_filename),
+    never from TMDB, per the regex-first design: TMDB only resolves the movie/
+    series identity, it never renumbers episodes.
+
+    guess_source is "filename" when the identity was resolved from an explicit
+    [tmdbid-NNN] tag embedded in the filename itself (deterministic), otherwise
+    "tmdb", meaning the cleaned title was fuzzy-matched against TMDB search
+    results. confidence is 1.0 for the "filename" case, and the difflib
+    similarity ratio of the fuzzy match otherwise (0.0 if nothing matched).
+    """
+    parsed = TMDB.clean_filename(filename)
+
+    try:
+        tmdb_result = tmdb.identify_by_filename(filename)
+    except Exception as e:
+        logger.error(f"Failed to guess watched file '{filename}': {e}")
+        tmdb_result = None
+
+    tmdb_id = (tmdb_result or {}).get("id")
+    from_filename_tag = bool(
+        parsed["tmdbid"] is not None and tmdb_id is not None and tmdb_id == parsed["tmdbid"]
+    )
+
+    if from_filename_tag:
+        source = "filename"
+        confidence = 1.0
+    else:
+        source = "tmdb"
+        confidence = float((tmdb_result or {}).get("_match_score") or 0.0)
+
+    media_type = (tmdb_result or {}).get("media_type") or parsed["type"]
+    title = None
+    if tmdb_result:
+        title = tmdb_result.get("title") if media_type == "movie" else tmdb_result.get("name")
+        title = title or tmdb_result.get("title") or tmdb_result.get("name")
+
+    return {
+        "media_type": media_type,
+        "tmdb_id": tmdb_id,
+        "title": title,
+        "season": parsed.get("season"),
+        "episode": parsed.get("episode"),
+        "confidence": confidence,
+        "source": source,
+    }
+
+
 def prune_orphaned_media(session: Session):
     """Delete movies and series left without any linked collection.
 
