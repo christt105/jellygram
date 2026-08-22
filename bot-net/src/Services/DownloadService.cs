@@ -73,32 +73,42 @@ public class DownloadService
 
             foreach (var file in task.Files)
             {
-                Log.Info($"[Downloader] Fetching message {file.MessageId} for file {file.Filename} (peer={file.StoragePeer})");
+                var route = DownloadRouting.Choose(file, _userClient?.IsAuthenticated == true);
+                Log.Info($"[Downloader] Fetching message {route.MessageId} for file {file.Filename} via {route.Identity}");
                 var fileStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                TL.Document? doc;
-                if (file.StoragePeer == "saved" && _userClient?.IsAuthenticated == true)
+                TL.Document? doc = null;
+
+                if (route.Identity == DownloadIdentity.SavedMessages)
                 {
+                    // Saved Messages is numbered by the account alone, so there is no bot id to
+                    // fall back to: without the session the file simply cannot be read.
+                    if (_userClient?.IsAuthenticated != true)
+                        throw new Exception(
+                            $"{file.Filename} is stored in the account's Saved Messages and needs its " +
+                            $"session to be read back; authenticate with `{UserClientService.ReauthInstructions}`.");
+
                     doc = await _userClient.GetDocumentFromSavedAsync(file.MessageId)
                         ?? throw new Exception($"Message {file.MessageId} not found in Saved Messages.");
                 }
-                else
+                else if (route.Identity == DownloadIdentity.UserAccount)
                 {
-                    var messages = await _bot.GetMessagesById(AuthConfig.OwnerUserId, new[] { file.MessageId });
-                    var msg = messages.FirstOrDefault();
-                    if (msg == null || (msg.Document == null && msg.Video == null))
-                        throw new Exception($"Message {file.MessageId} not found or has no document/video.");
-
-                    var tlMessage = msg.TLMessage as TL.Message;
-                    if (tlMessage?.media == null)
-                        throw new Exception($"Message {file.MessageId} has no media in TLMessage.");
-
-                    doc = null;
-                    if (tlMessage.media is MessageMediaDocument mmd)
-                        doc = mmd.document as TL.Document;
+                    // Purely an optimisation: message_id still points at the bot's own copy, so
+                    // anything going wrong here costs speed and nothing else.
+                    try
+                    {
+                        doc = await _userClient!.GetDocumentFromBotChatAsync(route.MessageId);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Info($"[Downloader] The account could not resolve message {route.MessageId}: {ex.Message}");
+                    }
 
                     if (doc == null)
-                        throw new Exception($"Message {file.MessageId} media document is null.");
+                    {
+                        Log.Info($"[Downloader] Falling back to the bot for {file.Filename}.");
+                        route = new DownloadRoute(DownloadIdentity.Bot, file.MessageId);
+                    }
                 }
 
                 var filePath = Path.Combine(tempDir, file.Filename);
@@ -114,6 +124,8 @@ public class DownloadService
                     long lastBytes = 0;
                     try
                     {
+                        doc ??= await ResolveThroughBotAsync(file.MessageId);
+
                         await using (var fileStream = System.IO.File.Create(filePath))
                         {
                             void OnProgress(long transmitted, long size)
@@ -133,10 +145,10 @@ public class DownloadService
                                 }
                             }
 
-                            if (file.StoragePeer == "saved" && _userClient?.IsAuthenticated == true)
-                                await _userClient.DownloadDocumentAsync(doc, fileStream, OnProgress);
-                            else
+                            if (route.Identity == DownloadIdentity.Bot)
                                 await _bot.Client.DownloadFileAsync(doc, fileStream, null, OnProgress);
+                            else
+                                await _userClient!.DownloadDocumentAsync(doc, fileStream, OnProgress);
                         }
                         downloadSuccess = true;
                     }
@@ -147,6 +159,15 @@ public class DownloadService
 
                         if (attempt >= maxRetries) throw;
 
+                        // The account is only ever the faster of two ways to the same file, so a
+                        // transfer that breaks on it spends its remaining attempts on the bot.
+                        if (route.Identity == DownloadIdentity.UserAccount)
+                        {
+                            Log.Info($"[Downloader] Retrying {file.Filename} through the bot instead of the account.");
+                            route = new DownloadRoute(DownloadIdentity.Bot, file.MessageId);
+                            doc = null;
+                        }
+
                         var delayMs = (int)Math.Pow(2, attempt) * 1000;
                         Log.Info($"[Downloader] Waiting {delayMs}ms before retrying...");
                         await Task.Delay(delayMs);
@@ -156,7 +177,7 @@ public class DownloadService
                 var fileMb = file.Filesize / 1_000_000.0;
                 var fileSec = fileStopwatch.Elapsed.TotalSeconds;
                 var fileMbps = fileSec > 0 ? fileMb / fileSec : 0;
-                Log.Info($"[Downloader] Finished {file.Filename} — {fileMb:F1} MB in {fileSec:F1}s ({fileMbps:F1} MB/s) via {file.StoragePeer}");
+                Log.Info($"[Downloader] Finished {file.Filename} — {fileMb:F1} MB in {fileSec:F1}s ({fileMbps:F1} MB/s) via {route.Identity}");
             }
 
             // 3. Check and extract if it's an archive
@@ -273,6 +294,27 @@ public class DownloadService
                 Log.Error($"[Downloader] Failed to clean up temp folder: {tempDir}", ex);
             }
         }
+    }
+
+    /// <summary>
+    /// Fetches a message from the bot's own chat with the owner. Every file has an id in this
+    /// numbering, so this is the way back to any of them when nothing faster is available.
+    /// </summary>
+    private async Task<TL.Document> ResolveThroughBotAsync(int messageId)
+    {
+        var messages = await _bot.GetMessagesById(AuthConfig.OwnerUserId, new[] { messageId });
+        var msg = messages.FirstOrDefault();
+        if (msg == null || (msg.Document == null && msg.Video == null))
+            throw new Exception($"Message {messageId} not found or has no document/video.");
+
+        var tlMessage = msg.TLMessage as TL.Message;
+        if (tlMessage?.media == null)
+            throw new Exception($"Message {messageId} has no media in TLMessage.");
+
+        if (tlMessage.media is MessageMediaDocument mmd && mmd.document is TL.Document doc)
+            return doc;
+
+        throw new Exception($"Message {messageId} media document is null.");
     }
 
     private async Task StoreTechnicalMetadata(int collectionId, string filePath)

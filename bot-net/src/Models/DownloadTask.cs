@@ -22,6 +22,7 @@ public class DownloadFileItem
 {
     [JsonPropertyName("id")] public int Id { get; set; }
     [JsonPropertyName("message_id")] public int MessageId { get; set; }
+    [JsonPropertyName("user_message_id")] public int? UserMessageId { get; set; }
     [JsonPropertyName("filename")] public string Filename { get; set; }
     [JsonPropertyName("filesize")] public long Filesize { get; set; }
     [JsonPropertyName("storage_peer")] public string StoragePeer { get; set; } = "bot";

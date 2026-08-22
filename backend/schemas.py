@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 class UploadIn(BaseModel):
     message_id: int
+    user_message_id: int | None = None  # Same message in the user account's own numbering
     filename: str
     filesize: int | None = None
     mime_type: str | None = None

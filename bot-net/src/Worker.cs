@@ -45,13 +45,14 @@ public class Worker : BackgroundService
             await botDispatcher.InitBot();
 
             // Try to resume a saved user session (non-fatal if unavailable)
-            if (!await userClient.TryResumeSessionAsync(apiId, apiHash))
+            var me = await bot.GetMe();
+            if (!await userClient.TryResumeSessionAsync(apiId, apiHash, me.Username!))
                 Log.Info($"[Startup] No saved user session. Authenticate with `{UserClientService.ReauthInstructions}`.");
 
             var downloadService = new DownloadService(bot, apiClient, _queue, userClient);
             _ = downloadService.PollAndProcessAsync(stoppingToken);
 
-            var uploadService = new UploadService(bot, apiClient, _queue, userClient);
+            var uploadService = new UploadService(bot, apiClient, _queue, userClient, botDispatcher.UploadEchoes);
             _ = uploadService.PollAndProcessAsync(stoppingToken);
 
             _ = _queue.StartProcessing(stoppingToken);

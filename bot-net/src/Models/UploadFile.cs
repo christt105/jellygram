@@ -6,6 +6,8 @@ public class UploadFile
 {
     [JsonPropertyName("message_id")] public int MessageId { get; set; }
 
+    [JsonPropertyName("user_message_id")] public int? UserMessageId { get; set; }
+
     [JsonPropertyName("filename")] public string FileName { get; set; } = string.Empty;
 
     [JsonPropertyName("filesize")] public long? FileSize { get; set; }

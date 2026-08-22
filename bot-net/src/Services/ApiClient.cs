@@ -51,6 +51,7 @@ public class ApiClient : IDisposable
         var payload = new
         {
             message_id = fileMeta.MessageId,
+            user_message_id = fileMeta.UserMessageId,
             filename = fileMeta.FileName,
             filesize = fileMeta.FileSize,
             mime_type = fileMeta.MimeType,
