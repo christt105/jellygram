@@ -362,6 +362,61 @@ public class ApiClient : IDisposable
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<WatchedFile?> ReportWatchedFileAsync(string path, string filename, long filesize)
+    {
+        var payload = new { path, filename, filesize };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files", payload);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ReportWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> RenameWatchedFileAsync(string oldPath, string newPath)
+    {
+        var payload = new { old_path = oldPath, new_path = newPath };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files/rename", payload);
+
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"RenameWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> MarkWatchedFileMissingAsync(string path)
+    {
+        var payload = new { path };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files/missing", payload);
+
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"MarkWatchedFileMissing failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<List<WatchedFile>?> GetWatchedFilesAsync(string? status = null)
+    {
+        var url = status is null ? "/watch" : $"/watch?status={Uri.EscapeDataString(status)}";
+        return await GetSafeAsync<List<WatchedFile>>(url);
+    }
+
     public async Task<byte[]?> DownloadBackupAsync()
     {
         var response = await _httpClient.GetAsync("/maintenance/backup");

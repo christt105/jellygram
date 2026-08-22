@@ -14,6 +14,9 @@ public static class MediaLibrary
     public static string ShowsDir =>
         Environment.GetEnvironmentVariable("JELLYFIN_SHOWS_DIR") ?? "/data/jellyfin/shows";
 
+    public static string DownloadsDir =>
+        Environment.GetEnvironmentVariable("DOWNLOADS_DIR") ?? "/data/media/downloads";
+
     public static string[] Roots() => [MoviesDir, ShowsDir];
 
     public static bool IsVideo(string path) =>
