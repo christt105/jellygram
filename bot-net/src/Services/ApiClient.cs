@@ -417,6 +417,47 @@ public class ApiClient : IDisposable
         return await GetSafeAsync<List<WatchedFile>>(url);
     }
 
+    public async Task<List<WatchedFile>?> GetPendingNotifyWatchedFilesAsync()
+    {
+        return await GetSafeAsync<List<WatchedFile>>("/watch/pending-notify");
+    }
+
+    public Task<WatchedFileResolution?> ConfirmWatchedFileAsync(int id, int tmdbId, int? season = null, int? episode = null) =>
+        ResolveWatchedFileAsync($"/watch/{id}/confirm", tmdbId, season, episode);
+
+    public Task<WatchedFileResolution?> CorrectWatchedFileAsync(int id, int tmdbId, int? season = null, int? episode = null) =>
+        ResolveWatchedFileAsync($"/watch/{id}/correct", tmdbId, season, episode);
+
+    private async Task<WatchedFileResolution?> ResolveWatchedFileAsync(string url, int tmdbId, int? season, int? episode)
+    {
+        var payload = new { tmdb_id = tmdbId, season, episode };
+        var response = await _httpClient.PostAsJsonAsync(url, payload);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ResolveWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFileResolution>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> PatchWatchedFileStatusAsync(int id, string status, string? movedPath = null, string? errorMessage = null)
+    {
+        var payload = new { status, moved_path = movedPath, error_message = errorMessage };
+        var response = await _httpClient.PatchAsync($"/watch/{id}", JsonContent.Create(payload, options: _jsonOptions));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"PatchWatchedFileStatus failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
     public async Task<byte[]?> DownloadBackupAsync()
     {
         var response = await _httpClient.GetAsync("/maintenance/backup");
