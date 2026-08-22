@@ -90,7 +90,7 @@ All configuration lives in `.env` (see `.env.example` for the template).
 | `MEDIA_ROOT`            | Host path for the media root, bind-mounted whole into `bot-net` at `/data/media` so moves between its subfolders stay on one filesystem. |
 | `MOVIES_SUBDIR`         | Subdirectory of `MEDIA_ROOT` holding the movies library (defaults `movies`), exposed to `bot-net` at `/data/media/${MOVIES_SUBDIR}`. |
 | `SHOWS_SUBDIR`          | Subdirectory of `MEDIA_ROOT` holding the shows library (defaults `shows`), exposed to `bot-net` at `/data/media/${SHOWS_SUBDIR}`. |
-| `DOWNLOADS_SUBDIR`      | Subdirectory of `MEDIA_ROOT` reserved for a future downloads-import watcher (defaults `downloads`); not read by any feature yet. |
+| `DOWNLOADS_SUBDIR`      | Subdirectory of `MEDIA_ROOT` watched by `bot-net`'s downloads-import `FileSystemWatcher` (defaults `downloads`), exposed to `bot-net` at `/data/media/${DOWNLOADS_SUBDIR}` via `DOWNLOADS_DIR`. |
 | `JELLYFIN_PATH_MAP`     | Maps the paths Jellyfin reports onto `bot-net`'s own paths, as `jellyfin_path:container_path` pairs separated by commas. Only needed when Jellyfin sees the library under different paths than the host — see [Path mapping](#path-mapping). |
 | `UPLOAD_SPLIT_LIMIT_MB` | Optional override for the part size used when splitting large files. Defaults to 1950 (bot API), or 3900 when a Premium user account session is active. |
 | `PUID` / `PGID`         | User/group IDs the `backend` and `bot-net` containers run as, so they can write to the host media directories (defaults `1000:1000`). |
