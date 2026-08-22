@@ -132,8 +132,9 @@ class TMDB:
 
         name = re.sub(r"\.(mkv|avi|mp4)$", "", name, flags=re.IGNORECASE)
 
-        # Final cleanup: collapse whitespace and underscores, but preserve
+        # Final cleanup: collapse whitespace, dots and underscores, but preserve
         # hyphens that join word characters (e.g. "Spider-Man").
+        name = re.sub(r"\.+", " ", name)         # dots → spaces
         name = re.sub(r"_+", " ", name)          # underscores → spaces
         name = re.sub(r"(?<![\w])-+|-+(?![\w])", " ", name)  # leading/trailing dashes → spaces
         name = re.sub(r"\s+", " ", name)

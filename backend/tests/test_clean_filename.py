@@ -78,6 +78,14 @@ from tmdb import TMDB
         "type": "tv",
         "season": 2,
         "episode": 1
+    }),
+    # Scene-release format: dots separate every token, including the title itself.
+    ("Show.Name.S01E02.1080p.WEB-DL.x264-GROUP.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show Name",
+        "type": "tv",
+        "season": 1,
+        "episode": 2
     })
 ])
 def test_clean_filename(filename, expected):
