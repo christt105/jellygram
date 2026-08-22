@@ -14,11 +14,11 @@ services:
       - "${BOT_NET_PORT:-8088}:8080"
     volumes:
       - ./appdata/bot-net:/data
-      - ${IMPORT_MOVIES_DIR:?set IMPORT_MOVIES_DIR in .env}:/data/import/movies
-      - ${IMPORT_SHOWS_DIR:?set IMPORT_SHOWS_DIR in .env}:/data/import/shows
+      - ${MEDIA_ROOT:?set MEDIA_ROOT in .env}:/data/media
     environment:
-      - JELLYFIN_MOVIES_DIR=/data/import/movies
-      - JELLYFIN_SHOWS_DIR=/data/import/shows
+      - JELLYFIN_MOVIES_DIR=/data/media/${MOVIES_SUBDIR:-movies}
+      - JELLYFIN_SHOWS_DIR=/data/media/${SHOWS_SUBDIR:-shows}
+      - DOWNLOADS_DIR=/data/media/${DOWNLOADS_SUBDIR:-downloads}
 
   backend:
     image: ghcr.io/christt105/cinegram-backend:${CINEGRAM_TAG:-latest}

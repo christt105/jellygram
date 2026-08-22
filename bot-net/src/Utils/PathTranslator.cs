@@ -4,8 +4,8 @@ public readonly record struct PathMapping(string Prefix, string Target);
 
 /// <summary>
 /// Rewrites a path as reported by Jellyfin into the equivalent path inside this container.
-/// Jellyfin reports paths as its own process sees them, which only match the host paths in
-/// IMPORT_*_DIR when it runs outside Docker or shares the same mount points; JELLYFIN_PATH_MAP
+/// Jellyfin reports paths as its own process sees them, which only match the host paths under
+/// MEDIA_ROOT when it runs outside Docker or shares the same mount points; JELLYFIN_PATH_MAP
 /// covers every other deployment and is consulted first.
 /// </summary>
 public static class PathTranslator
@@ -55,12 +55,14 @@ public static class PathTranslator
         foreach (var mapping in ParseMap(Environment.GetEnvironmentVariable("JELLYFIN_PATH_MAP")))
             yield return mapping;
 
-        var movies = Environment.GetEnvironmentVariable("IMPORT_MOVIES_DIR");
-        if (!string.IsNullOrWhiteSpace(movies))
-            yield return new PathMapping(movies.TrimEnd('/'), "/data/import/movies");
+        var mediaRoot = Environment.GetEnvironmentVariable("MEDIA_ROOT");
+        if (string.IsNullOrWhiteSpace(mediaRoot)) yield break;
 
-        var shows = Environment.GetEnvironmentVariable("IMPORT_SHOWS_DIR");
-        if (!string.IsNullOrWhiteSpace(shows))
-            yield return new PathMapping(shows.TrimEnd('/'), "/data/import/shows");
+        mediaRoot = mediaRoot.TrimEnd('/');
+        var moviesSubdir = Environment.GetEnvironmentVariable("MOVIES_SUBDIR") ?? "movies";
+        var showsSubdir = Environment.GetEnvironmentVariable("SHOWS_SUBDIR") ?? "shows";
+
+        yield return new PathMapping($"{mediaRoot}/{moviesSubdir}", MediaLibrary.MoviesDir);
+        yield return new PathMapping($"{mediaRoot}/{showsSubdir}", MediaLibrary.ShowsDir);
     }
 }
