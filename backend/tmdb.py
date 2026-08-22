@@ -253,6 +253,7 @@ class TMDB:
             return None
 
         best["media_type"] = media_type
+        best["_match_score"] = best_sim
         return best
 
     def _search_and_match(self, query: str, content_type: str) -> dict | None:
