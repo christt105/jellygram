@@ -43,6 +43,10 @@ public class BotDispatcher
     /// <summary>Where <see cref="UploadService"/> collects the bot's own id for its uploads.</summary>
     public UploadEchoRegistry UploadEchoes { get; } = new();
 
+    /// <summary>Shared with <see cref="WatchNotificationService"/> so the Confirm/Correct
+    /// callbacks and the removed-file reconciliation sweep track the same live messages.</summary>
+    public WatchedFileMessageRegistry WatchedFileMessages { get; } = new();
+
     public PendingActionHandler PendingActionHandler => _pendingActionHandler;
 
     public async Task InitBot()
