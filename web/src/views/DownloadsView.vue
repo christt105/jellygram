@@ -5,10 +5,22 @@
         <h1>Downloads</h1>
         <p class="content-subtitle">Files detected in the downloads folder, guessed against TMDB</p>
       </div>
-      <button class="glass-button primary" @click="fetchFiles">
-        <RefreshCw :size="16" :class="{ spinning: isLoading }" />
-        Refresh
-      </button>
+      <div class="content-header-actions">
+        <button
+          v-if="view === 'pending'"
+          class="glass-button"
+          :disabled="isReidentifying"
+          title="Re-run TMDB identification for every pending file"
+          @click="reidentifyAll"
+        >
+          <Sparkles :size="16" :class="{ spinning: isReidentifying }" />
+          Retry identification
+        </button>
+        <button class="glass-button primary" @click="fetchFiles">
+          <RefreshCw :size="16" :class="{ spinning: isLoading }" />
+          Refresh
+        </button>
+      </div>
     </div>
 
     <div class="tabs">
@@ -215,12 +227,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { RefreshCw, Check, Edit3, ExternalLink } from 'lucide-vue-next';
+import { RefreshCw, Check, Edit3, ExternalLink, Sparkles } from 'lucide-vue-next';
 import { backendUrl } from '../config';
 import {
   listWatchedFiles,
   confirmWatchedFile,
   correctWatchedFile,
+  reidentifyWatchedFiles,
   type WatchedFile,
   type WatchedFileStatus
 } from '../api/backend';
@@ -239,6 +252,7 @@ const isLoading = ref(false);
 const view = ref<'pending' | 'history'>('pending');
 const selectedIds = ref<Set<number>>(new Set());
 const isBatchActing = ref(false);
+const isReidentifying = ref(false);
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 // "confirmed"/"corrected" are transient — bot-net hasn't picked them up and moved them yet —
@@ -292,6 +306,19 @@ const fetchFiles = async () => {
     console.error('Error fetching watched files:', error);
   } finally {
     isLoading.value = false;
+  }
+};
+
+const reidentifyAll = async () => {
+  isReidentifying.value = true;
+  try {
+    await reidentifyWatchedFiles();
+    await fetchFiles();
+  } catch (error) {
+    console.error('Error re-identifying watched files:', error);
+    alert('Failed to re-identify watched files.');
+  } finally {
+    isReidentifying.value = false;
   }
 };
 
@@ -516,6 +543,12 @@ onUnmounted(() => {
 .downloads-view {
   display: flex;
   flex-direction: column;
+}
+
+.content-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .tabs {

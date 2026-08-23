@@ -119,6 +119,14 @@ export async function confirmWatchedFile(
   return res.json();
 }
 
+export async function reidentifyWatchedFiles(): Promise<WatchedFile[]> {
+  const res = await fetch(`${backendUrl}/watch/reidentify`, { method: 'POST' });
+  if (!res.ok) {
+    throw new Error(`Failed to re-identify watched files: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function correctWatchedFile(
   id: number,
   tmdbId: number,
