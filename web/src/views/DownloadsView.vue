@@ -11,38 +11,17 @@
       </button>
     </div>
 
-    <div class="stats-bento">
-      <div class="stat-card glass-panel">
-        <span class="stat-label label-caps">Total</span>
-        <span class="stat-value" style="color: var(--primary);">{{ files.length }}</span>
-      </div>
-      <div class="stat-card glass-panel">
-        <span class="stat-label label-caps">Awaiting Decision</span>
-        <span class="stat-value" style="color: var(--secondary);">{{ awaitingCount }}</span>
-      </div>
-      <div class="stat-card glass-panel">
-        <span class="stat-label label-caps">Moved</span>
-        <span class="stat-value" style="color: var(--success);">{{ movedCount }}</span>
-      </div>
-      <div class="stat-card glass-panel">
-        <span class="stat-label label-caps">Errors</span>
-        <span class="stat-value" style="color: var(--error);">{{ errorCount }}</span>
-      </div>
-    </div>
-
-    <div class="filters">
-      <button
-        v-for="opt in statusOptions"
-        :key="opt.value"
-        class="glass-button"
-        :class="{ active: statusFilter === opt.value }"
-        @click="statusFilter = opt.value; fetchFiles()"
-      >
-        {{ opt.label }}
+    <div class="tabs">
+      <button class="glass-button" :class="{ active: view === 'pending' }" @click="view = 'pending'">
+        Pending
+        <span v-if="pendingRows.length" class="tab-count">{{ pendingRows.length }}</span>
+      </button>
+      <button class="glass-button" :class="{ active: view === 'history' }" @click="view = 'history'">
+        History
       </button>
     </div>
 
-    <div class="glass-panel batch-bar">
+    <div v-if="view === 'pending'" class="glass-panel batch-bar">
       <div class="batch-bar-selection">
         <button class="glass-button" @click="selectAllPending">Select all pending</button>
         <button class="glass-button" :disabled="selectedIds.size === 0" @click="clearSelection">Clear selection</button>
@@ -69,10 +48,12 @@
     </div>
 
     <div v-if="isLoading && files.length === 0" class="empty-state">Loading&hellip;</div>
-    <div v-else-if="files.length === 0" class="empty-state">No watched files for this filter.</div>
+    <div v-else-if="visibleRows.length === 0" class="empty-state">
+      {{ view === 'pending' ? 'Nothing pending — the downloads folder is all caught up.' : 'No history yet.' }}
+    </div>
     <div v-else class="task-list">
       <div
-        v-for="row in files"
+        v-for="row in visibleRows"
         :key="row.id"
         class="glass-panel task-card"
         :class="{ dimmed: row.status === 'removed' }"
@@ -80,8 +61,8 @@
         <div class="task-info">
           <div class="task-selectblock">
             <input
+              v-if="view === 'pending'"
               type="checkbox"
-              :disabled="row.status === 'removed' || row.status === 'moved'"
               :checked="selectedIds.has(row.id)"
               @change="toggleSelect(row.id)"
             />
@@ -112,7 +93,7 @@
           </div>
         </div>
 
-        <div class="task-row-actions">
+        <div v-if="view === 'pending'" class="task-row-actions">
           <button
             class="glass-button success btn-sm"
             :disabled="!row.guess_tmdb_id || isBatchActing"
@@ -255,27 +236,18 @@ interface TMDBSearchResult {
 
 const files = ref<WatchedFile[]>([]);
 const isLoading = ref(false);
-const statusFilter = ref<WatchedFileStatus | ''>('');
+const view = ref<'pending' | 'history'>('pending');
 const selectedIds = ref<Set<number>>(new Set());
 const isBatchActing = ref(false);
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-const statusOptions: { value: WatchedFileStatus | ''; label: string }[] = [
-  { value: '', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'notified', label: 'Notified' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'corrected', label: 'Corrected' },
-  { value: 'moved', label: 'Moved' },
-  { value: 'removed', label: 'Removed' },
-  { value: 'error', label: 'Error' }
-];
+// "confirmed"/"corrected" are transient — bot-net hasn't picked them up and moved them yet —
+// so they still belong with what's pending, not with the finished history below.
+const PENDING_STATUSES: WatchedFileStatus[] = ['pending', 'notified', 'confirmed', 'corrected'];
 
-const awaitingCount = computed(
-  () => files.value.filter(f => f.status === 'pending' || f.status === 'notified').length
-);
-const movedCount = computed(() => files.value.filter(f => f.status === 'moved').length);
-const errorCount = computed(() => files.value.filter(f => f.status === 'error').length);
+const pendingRows = computed(() => files.value.filter(f => PENDING_STATUSES.includes(f.status)));
+const historyRows = computed(() => files.value.filter(f => !PENDING_STATUSES.includes(f.status)));
+const visibleRows = computed(() => (view.value === 'pending' ? pendingRows.value : historyRows.value));
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
@@ -315,7 +287,7 @@ const formatSize = (bytes: number) => {
 const fetchFiles = async () => {
   isLoading.value = true;
   try {
-    files.value = await listWatchedFiles(statusFilter.value || undefined);
+    files.value = await listWatchedFiles();
   } catch (error) {
     console.error('Error fetching watched files:', error);
   } finally {
@@ -546,37 +518,16 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.stats-bento {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--gutter);
-  margin-bottom: var(--sp-md);
-}
-
-.stat-card {
-  padding: var(--sp-md);
-  border-radius: var(--r-xl);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.stat-label {
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-}
-
-.stat-value {
-  font-size: 2.25rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.filters {
+.tabs {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
   margin-bottom: var(--sp-sm);
+}
+
+.tab-count {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-size: 0.8em;
 }
 
 .batch-bar {
