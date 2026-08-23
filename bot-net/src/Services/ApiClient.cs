@@ -422,6 +422,20 @@ public class ApiClient : IDisposable
         return await GetSafeAsync<List<WatchedFile>>("/watch/pending-notify");
     }
 
+    public async Task<List<WatchedFile>?> ReidentifyWatchedFilesAsync()
+    {
+        var response = await _httpClient.PostAsync("/watch/reidentify", null);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ReidentifyWatchedFiles failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<List<WatchedFile>>(_jsonOptions);
+    }
+
     public Task<WatchedFileResolution?> ConfirmWatchedFileAsync(int id, int tmdbId, int? season = null, int? episode = null) =>
         ResolveWatchedFileAsync($"/watch/{id}/confirm", tmdbId, season, episode);
 
