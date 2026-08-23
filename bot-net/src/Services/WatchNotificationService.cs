@@ -11,7 +11,10 @@ namespace Bot.Services;
 /// got deleted from disk after its notify message went out but before it was actioned, editing
 /// that message to say so instead of leaving a dead button behind — a lower-overhead approach
 /// than reacting to the FileSystemWatcher's own Deleted event directly, since that event fires
-/// in bot-net's own process and only WatchedFolderService listens to it.
+/// in bot-net's own process and only WatchedFolderService listens to it. Also polls
+/// /watch?status=confirmed and /watch?status=corrected to pick up rows actioned from the web
+/// instead of a Telegram button tap — those never go through WatchedFileMoveFlow otherwise,
+/// since there's no Telegram callback to trigger it.
 /// </summary>
 public class WatchNotificationService
 {
@@ -36,6 +39,8 @@ public class WatchNotificationService
             {
                 await NotifyPendingAsync();
                 await ReconcileRemovedAsync();
+                await ProcessWebResolvedAsync("confirmed");
+                await ProcessWebResolvedAsync("corrected");
             }
             catch (Exception ex)
             {
@@ -100,6 +105,36 @@ public class WatchNotificationService
             await _bot.EditMessageText(
                 reference.ChatId, reference.MessageId,
                 WatchedFileMessages.BuildRemovedWhileNotifiedText(row.Filename));
+        }
+    }
+
+    /// <summary>
+    /// A row a Telegram tap just confirmed/corrected goes through WatchedFileMoveFlow.ExecuteAsync
+    /// straight away and is still tracked in the registry until that finishes — skipping rows
+    /// still tracked there keeps this poller from racing that in-flight move for the same row.
+    /// Rows that never had a live message (actioned from the web) are never tracked at all.
+    /// </summary>
+    private async Task ProcessWebResolvedAsync(string status)
+    {
+        var rows = await _apiClient.GetWatchedFilesAsync(status);
+        if (rows is null || rows.Count == 0) return;
+
+        var live = _registry.Snapshot();
+
+        foreach (var row in rows)
+        {
+            if (live.ContainsKey(row.Id)) continue;
+
+            var resolution = WatchedFileResolution.FromWatchedFile(row);
+            if (resolution is null)
+            {
+                Log.Error($"[WatchNotification] Row {row.Id} is {status} without a resolved guess, skipping.");
+                continue;
+            }
+
+            Log.Info($"[WatchNotification] Picking up {row.Filename} (row {row.Id}, {status} from the web).");
+            var outcome = await WatchedFileMoveFlow.MoveAndReportAsync(_apiClient, row.Id, resolution);
+            Log.Info($"[WatchNotification] {row.Filename} (row {row.Id}): {outcome.Text}");
         }
     }
 }
