@@ -46,6 +46,11 @@ const router = createRouter({
       component: QueueView
     },
     {
+      path: '/downloads',
+      name: 'downloads',
+      component: () => import('../views/DownloadsView.vue')
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: SettingsView
