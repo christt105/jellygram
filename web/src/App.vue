@@ -26,6 +26,10 @@
           <List :size="20" />
           <span>Transfers</span>
         </router-link>
+        <router-link to="/downloads" class="nav-item" active-class="active">
+          <FolderDown :size="20" />
+          <span>Downloads</span>
+        </router-link>
         <router-link to="/settings" class="nav-item" active-class="active">
           <Settings :size="20" />
           <span>Settings</span>
@@ -73,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { Film, Tv, Send, Settings, Search, List, Github } from 'lucide-vue-next';
+import { Film, Tv, Send, Settings, Search, List, Github, FolderDown } from 'lucide-vue-next';
 import { onMounted, ref, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useJellyfin } from './api/jellyfin';

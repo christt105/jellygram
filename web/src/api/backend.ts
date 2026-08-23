@@ -53,6 +53,89 @@ export interface BackendSeries {
   seasons: BackendSeason[];
 }
 
+export type WatchedFileStatus =
+  | 'pending'
+  | 'notified'
+  | 'confirmed'
+  | 'corrected'
+  | 'moved'
+  | 'removed'
+  | 'error';
+
+export interface WatchedFile {
+  id: number;
+  path: string;
+  filename: string;
+  filesize: number;
+  first_seen_at: string;
+  guess_media_type?: 'movie' | 'tv' | null;
+  guess_tmdb_id?: number | null;
+  guess_title?: string | null;
+  guess_season?: number | null;
+  guess_episode?: number | null;
+  confidence: number;
+  guess_source?: string | null;
+  status: WatchedFileStatus;
+  notified_at?: string | null;
+  moved_path?: string | null;
+  error_message?: string | null;
+}
+
+export interface WatchedFileResolution {
+  id: number;
+  path: string;
+  filename: string;
+  tmdb_id: number;
+  media_type: string;
+  title: string;
+  season?: number | null;
+  episode?: number | null;
+  status: string;
+}
+
+export async function listWatchedFiles(status?: WatchedFileStatus): Promise<WatchedFile[]> {
+  const url = status ? `${backendUrl}/watch?status=${status}` : `${backendUrl}/watch`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to list watched files: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function confirmWatchedFile(
+  id: number,
+  tmdbId: number,
+  season?: number | null,
+  episode?: number | null
+): Promise<WatchedFileResolution> {
+  const res = await fetch(`${backendUrl}/watch/${id}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tmdb_id: tmdbId, season, episode })
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to confirm watched file ${id}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function correctWatchedFile(
+  id: number,
+  tmdbId: number,
+  season?: number | null,
+  episode?: number | null
+): Promise<WatchedFileResolution> {
+  const res = await fetch(`${backendUrl}/watch/${id}/correct`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tmdb_id: tmdbId, season, episode })
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to correct watched file ${id}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export function useBackend() {
   const telegramMovies = ref<BackendMovie[]>([]);
   const telegramSeries = ref<BackendSeries[]>([]);
