@@ -201,6 +201,30 @@ def test_patch_notified_sets_notified_at(client):
     assert res.json()["notified_at"] is not None
 
 
+def test_reidentify_reguesses_only_unresolved_rows(client):
+    unresolved = report(client, "downloads/unmatched.mkv", filename="Unmatched.File.mkv")
+    assert unresolved["guess_tmdb_id"] is None
+
+    confirmed = report(client, "downloads/already-confirmed.mkv", filename="Confirm.Me.mkv")
+    client.post(f"/watch/{confirmed['id']}/confirm", json={"tmdb_id": 42})
+
+    watch_module.tmdb.identify_by_filename = lambda filename: (
+        {"id": 42, "name": "Stub Show", "media_type": "tv", "_match_score": 0.9}
+        if "Unmatched" in filename else {}
+    )
+
+    res = client.post("/watch/reidentify")
+    assert res.status_code == 200, res.text
+    data = res.json()
+
+    updated = next(f for f in data if f["id"] == unresolved["id"])
+    assert updated["guess_tmdb_id"] == 42
+    assert all(f["id"] != confirmed["id"] for f in data)
+
+    still_confirmed = client.get("/watch", params={"status": "confirmed"}).json()
+    assert any(f["id"] == confirmed["id"] for f in still_confirmed)
+
+
 def test_patch_rejects_confirmed_status(client):
     created = report(client, "downloads/patch-bad.mkv", filename="Patch.Bad.mkv")
     res = client.patch(f"/watch/{created['id']}", json={"status": "confirmed"})

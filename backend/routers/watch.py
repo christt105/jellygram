@@ -112,6 +112,24 @@ def mark_missing(payload: WatchedFileMissingIn, session: Session = Depends(get_s
     return row
 
 
+@router.post("/reidentify", response_model=List[WatchedFile])
+def reidentify_all(session: Session = Depends(get_session)):
+    """Re-run the TMDB guess for every row still unresolved (pending/notified) — e.g. after
+    fixing the filename parser, or if TMDB was unreachable when a file was first detected.
+    Rows already confirmed/corrected/moved are left alone, since re-guessing them would be
+    reopening something that (for moved rows) is already sitting on disk."""
+    rows = session.exec(select(WatchedFile).where(WatchedFile.status.in_(RESOLVABLE_STATUSES))).all()
+
+    for row in rows:
+        _apply_guess(row)
+        session.add(row)
+    session.commit()
+
+    for row in rows:
+        session.refresh(row)
+    return rows
+
+
 @router.get("", response_model=List[WatchedFile])
 def list_watched_files(status: Optional[str] = None, session: Session = Depends(get_session)):
     """For the web: all watched files, optionally filtered by status."""
