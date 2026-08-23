@@ -59,9 +59,7 @@ public class WatchNotificationService
 
         foreach (var row in pending)
         {
-            var text = WatchedFileMessages.BuildNotifyText(
-                row.Filename, row.GuessMediaType, row.GuessTitle, row.GuessSeason, row.GuessEpisode, row.Confidence,
-                row.GuessTmdbId);
+            var text = BuildNotifyMessageText(row);
 
             var sent = await _bot.SendMessage(AuthConfig.OwnerUserId, text, ParseMode.Html,
                 replyMarkup: BuildNotifyButtons(row));
@@ -73,7 +71,16 @@ public class WatchNotificationService
         }
     }
 
-    private static InlineKeyboardButton[][] BuildNotifyButtons(WatchedFile row)
+    /// <summary>Also used by <see cref="CancelConfirmWatchedFileCallback"/> to restore the
+    /// original notify message when the user backs out of the confirmation prompt.</summary>
+    public static string BuildNotifyMessageText(WatchedFile row) =>
+        WatchedFileMessages.BuildNotifyText(
+            row.Filename, row.GuessMediaType, row.GuessTitle, row.GuessSeason, row.GuessEpisode, row.Confidence,
+            row.GuessTmdbId);
+
+    /// <summary>Also used by <see cref="CancelConfirmWatchedFileCallback"/> to restore the
+    /// original notify message when the user backs out of the confirmation prompt.</summary>
+    public static InlineKeyboardButton[][] BuildNotifyButtons(WatchedFile row)
     {
         var rows = new List<InlineKeyboardButton[]>();
 
@@ -82,7 +89,7 @@ public class WatchNotificationService
             rows.Add([
                 InlineKeyboardButton.WithCallbackData(
                     "✅ Confirm",
-                    ConfirmWatchedFileCallback.Pack(row.Id, row.GuessTmdbId.Value, row.GuessSeason, row.GuessEpisode))
+                    AskConfirmWatchedFileCallback.Pack(row.Id, row.GuessTmdbId.Value, row.GuessSeason, row.GuessEpisode))
             ]);
         }
 

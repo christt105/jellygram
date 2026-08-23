@@ -13,6 +13,17 @@ public static class WatchedFileMoveFlow
 {
     public readonly record struct MoveOutcome(bool Success, string Text);
 
+    /// <summary>
+    /// The path the naming convention asks for, before <see cref="MediaNaming.ResolveFreePath"/>
+    /// picks a numbered variant if it's already taken. Exposed so a caller can preview it (and
+    /// warn about a collision) before actually committing to the move.
+    /// </summary>
+    public static string BuildProspectiveDestination(
+        string mediaType, string title, int tmdbId, int? season, int? episode, string filename) =>
+        WatchedFileNaming.BuildDestinationPath(
+            MediaLibrary.MoviesDir, MediaLibrary.ShowsDir, mediaType, title, tmdbId, season, episode,
+            Path.GetExtension(filename));
+
     /// Backend-reporting part, with no Telegram message to edit — reused by the web poller.
     public static async Task<MoveOutcome> MoveAndReportAsync(
         ApiClient apiClient, int watchedFileId, WatchedFileResolution? resolution)
@@ -31,10 +42,9 @@ public static class WatchedFileMoveFlow
             return new MoveOutcome(false, WatchedFileMessages.BuildMissingText(resolution.Filename));
         }
 
-        var extension = Path.GetExtension(resolution.Filename);
-        var destPath = WatchedFileNaming.BuildDestinationPath(
-            MediaLibrary.MoviesDir, MediaLibrary.ShowsDir, resolution.MediaType, resolution.Title,
-            resolution.TmdbId, resolution.Season, resolution.Episode, extension);
+        var destPath = BuildProspectiveDestination(
+            resolution.MediaType, resolution.Title, resolution.TmdbId, resolution.Season, resolution.Episode,
+            resolution.Filename);
         destPath = MediaNaming.ResolveFreePath(destPath, null);
 
         var (ok, error) = await SafeFileMover.MoveAsync(sourcePath, destPath);

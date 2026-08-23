@@ -343,6 +343,7 @@ const clearSelection = () => {
 
 const confirmRow = async (row: WatchedFile) => {
   if (!row.guess_tmdb_id) return;
+  if (!confirm(`Move "${row.filename}" into the library as "${guessLabel(row)}"?`)) return;
   try {
     await confirmWatchedFile(row.id, row.guess_tmdb_id, row.guess_season, row.guess_episode);
     await fetchFiles();
@@ -353,6 +354,9 @@ const confirmRow = async (row: WatchedFile) => {
 };
 
 const confirmSelected = async () => {
+  const count = selectedIds.value.size;
+  if (!confirm(`Move ${count} selected file(s) into the library?`)) return;
+
   isBatchActing.value = true;
   const targets = files.value.filter(f => selectedIds.value.has(f.id));
   const skipped: string[] = [];

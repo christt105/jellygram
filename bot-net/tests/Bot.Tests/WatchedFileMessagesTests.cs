@@ -98,6 +98,24 @@ public class WatchedFileMessagesTests
         Assert.Equal(episode, result.Episode);
     }
 
+    [Fact]
+    public void BuildConfirmPromptText_WarnsOnDestinationCollision()
+    {
+        var text = WatchedFileMessages.BuildConfirmPromptText(
+            "Movie.mkv", "/media/movies/Movie (2020)/Movie.mkv", destinationExists: true);
+
+        Assert.Contains("already exists", text);
+    }
+
+    [Fact]
+    public void BuildConfirmPromptText_OmitsWarningWhenDestinationIsFree()
+    {
+        var text = WatchedFileMessages.BuildConfirmPromptText(
+            "Movie.mkv", "/media/movies/Movie (2020)/Movie.mkv", destinationExists: false);
+
+        Assert.DoesNotContain("already exists", text);
+    }
+
     [Theory]
     [InlineData("not a valid reply")]
     [InlineData("tmdb")]

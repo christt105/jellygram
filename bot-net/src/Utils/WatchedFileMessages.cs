@@ -87,6 +87,20 @@ public static partial class WatchedFileMessages
          ⚠️ {filename} was removed from disk before it was confirmed.
          """;
 
+    public static string BuildConfirmPromptText(string filename, string destinationPath, bool destinationExists)
+    {
+        var warning = destinationExists
+            ? "\n⚠️ A file already exists at that path — confirming will keep both as separate files.\n"
+            : "";
+
+        return $"""
+                Move {filename} to:
+                {destinationPath}
+                {warning}
+                Are you sure?
+                """;
+    }
+
     public static string BuildCorrectionPromptText(string filename) =>
         $"""
          ✏️ Correcting: {filename}
