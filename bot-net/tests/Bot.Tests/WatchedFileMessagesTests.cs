@@ -84,6 +84,10 @@ public class WatchedFileMessagesTests
     [InlineData("tmdb 1234 season 2 episode 5", 1234, 2, 5)]
     [InlineData("tmdb 1234 season 2", 1234, 2, null)]
     [InlineData("tmdb 1234 episode 5", 1234, null, 5)]
+    [InlineData("1234", 1234, null, null)]
+    [InlineData("  1234  ", 1234, null, null)]
+    [InlineData("1234 season 2 episode 5", 1234, 2, 5)]
+    [InlineData("1234 season 2", 1234, 2, null)]
     public void TryParseCorrection_ParsesValidReplies(string input, int tmdbId, int? season, int? episode)
     {
         var ok = WatchedFileMessages.TryParseCorrection(input, out var result);

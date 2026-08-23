@@ -4,17 +4,18 @@ namespace Bot.Utils;
 
 /// <summary>
 /// Pure text formatting/parsing for the watched-file Telegram flow: the notify message, the
-/// outcome messages after a move attempt, and the "tmdb &lt;id&gt; [season &lt;n&gt; episode &lt;n&gt;]"
-/// manual correction syntax read back from the user's reply.
+/// outcome messages after a move attempt, and the "&lt;id&gt; [season &lt;n&gt; episode &lt;n&gt;]"
+/// manual correction syntax read back from the user's reply (the "tmdb" prefix is accepted but
+/// optional, since a bare id is what people naturally type when asked for "the TMDB id").
 /// </summary>
 public static partial class WatchedFileMessages
 {
     public const string CorrectionSyntaxHint =
-        "Reply with `tmdb <id>` or `tmdb <id> season <n> episode <n>`.";
+        "Reply with the TMDB id, e.g. `12345` or `12345 season <n> episode <n>` (`tmdb 12345` also works).";
 
     private const string NotifyPrefix = "📁 New file detected: ";
 
-    [GeneratedRegex(@"^tmdb\s+(\d+)(?:\s+season\s+(\d+))?(?:\s+episode\s+(\d+))?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:tmdb\s+)?(\d+)(?:\s+season\s+(\d+))?(?:\s+episode\s+(\d+))?$", RegexOptions.IgnoreCase)]
     private static partial Regex CorrectionPattern();
 
     public static string FormatSeasonEpisode(int? season, int? episode)

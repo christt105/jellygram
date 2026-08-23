@@ -39,24 +39,30 @@ public class CorrectWatchedFileCallback : ICallbackQuery
         await _bot.EditMessageText(message.Chat.Id, message.MessageId,
             WatchedFileMessages.BuildCorrectionPromptText(filename));
 
-        await _pendingActionHandler.SetPendingAction(new PendingActionHandler.PendingAction(
+        await ArmPendingAction(message, filename);
+    }
+
+    /// Re-armed on every invalid reply too, so a typo doesn't dead-end the conversation with no
+    /// way to retry other than pressing "Correct" again from scratch.
+    private Task ArmPendingAction(Message message, string filename) =>
+        _pendingActionHandler.SetPendingAction(new PendingActionHandler.PendingAction(
             id: $"correct-watched-file-{_watchedFileId}",
             chatId: message.Chat.Id,
             owner: message.MessageId,
-            callback: async text => await HandleReply(text, message),
+            callback: async text => await HandleReply(text, message, filename),
             cancelCallback: async () =>
             {
                 await _bot.EditMessageText(message.Chat.Id, message.MessageId, "Correction cancelled.");
             }
         ));
-    }
 
-    private async Task HandleReply(string text, Message message)
+    private async Task HandleReply(string text, Message message, string filename)
     {
         if (!WatchedFileMessages.TryParseCorrection(text, out var parsed))
         {
             await _bot.EditMessageText(message.Chat.Id, message.MessageId,
                 WatchedFileMessages.BuildCorrectionInvalidText());
+            await ArmPendingAction(message, filename);
             return;
         }
 
