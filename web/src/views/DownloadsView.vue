@@ -30,18 +30,6 @@
       </div>
     </div>
 
-    <div class="glass-panel move-gap-warning">
-      <AlertTriangle :size="18" style="flex-shrink: 0; color: var(--warning);" />
-      <p>
-        Confirming or correcting a file here only updates its record in the backend
-        (status becomes <strong>confirmed</strong>/<strong>corrected</strong>). The actual move on
-        disk is currently only performed by bot-net when a confirmation comes from a Telegram
-        button tap — bot-net's poller does not yet pick up rows actioned from the web. Files
-        confirmed here will stay in <strong>confirmed</strong>/<strong>corrected</strong> status
-        (not <strong>moved</strong>) until that bot-net gap is closed.
-      </p>
-    </div>
-
     <div class="filters">
       <button
         v-for="opt in statusOptions"
@@ -232,7 +220,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { RefreshCw, Check, Edit3, AlertTriangle } from 'lucide-vue-next';
+import { RefreshCw, Check, Edit3 } from 'lucide-vue-next';
 import { backendUrl } from '../config';
 import {
   listWatchedFiles,
@@ -556,23 +544,6 @@ onUnmounted(() => {
   font-size: 2.25rem;
   font-weight: 800;
   line-height: 1;
-}
-
-.move-gap-warning {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 18px;
-  margin-bottom: var(--sp-md);
-  background: rgba(245, 191, 0, 0.08);
-  border: 1px solid rgba(245, 191, 0, 0.25);
-}
-
-.move-gap-warning p {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--on-surface);
 }
 
 .filters {
