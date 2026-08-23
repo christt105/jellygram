@@ -87,7 +87,21 @@
             />
             <div class="task-titleblock">
               <h4>{{ row.filename }}</h4>
-              <span class="task-direction label-caps">{{ guessLabel(row) }}</span>
+              <span class="task-direction label-caps">
+                {{ guessLabel(row) }}
+                <a
+                  v-if="tmdbUrl(row)"
+                  :href="tmdbUrl(row)!"
+                  target="_blank"
+                  rel="noopener"
+                  class="tmdb-link"
+                  title="Open on TMDB"
+                  @click.stop
+                >
+                  <ExternalLink :size="12" />
+                  TMDB
+                </a>
+              </span>
             </div>
           </div>
           <div class="task-badges">
@@ -220,7 +234,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { RefreshCw, Check, Edit3 } from 'lucide-vue-next';
+import { RefreshCw, Check, Edit3, ExternalLink } from 'lucide-vue-next';
 import { backendUrl } from '../config';
 import {
   listWatchedFiles,
@@ -270,6 +284,14 @@ const guessLabel = (row: WatchedFile) => {
   if (row.guess_season == null) return title;
   if (row.guess_episode == null) return `${title} S${pad(row.guess_season)} (season pack)`;
   return `${title} S${pad(row.guess_season)}E${pad(row.guess_episode)}`;
+};
+
+// A close-looking wrong guess (e.g. an obscure same-named title, or a series shown under a
+// localized name) is hard to catch from the guessed title alone, so link straight to TMDB
+// to sanity-check it before confirming.
+const tmdbUrl = (row: WatchedFile) => {
+  if (!row.guess_tmdb_id || (row.guess_media_type !== 'movie' && row.guess_media_type !== 'tv')) return null;
+  return `https://www.themoviedb.org/${row.guess_media_type}/${row.guess_tmdb_id}`;
 };
 
 const confidenceClass = (confidence: number) => {
@@ -634,6 +656,20 @@ onUnmounted(() => {
   color: var(--on-surface-variant);
   opacity: 0.7;
   font-size: 11px;
+}
+
+.tmdb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  color: var(--primary);
+  opacity: 1;
+  text-decoration: none;
+}
+
+.tmdb-link:hover {
+  text-decoration: underline;
 }
 
 .task-badges {

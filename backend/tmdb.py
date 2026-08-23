@@ -66,11 +66,33 @@ class TMDB:
         for pattern in noise_patterns:
             name = re.sub(pattern, "", name, flags=re.IGNORECASE)
 
+        # Strip a trailing scene release-group tag (e.g. ".x264-GROUP"), the
+        # last hyphen-joined segment scene releases append before the
+        # extension. Left in, it rides straight into the TMDB search query,
+        # which returns zero results for an unrecognized trailing word. Only
+        # applied when a dot survives elsewhere in the name, i.e. this still
+        # looks like an unprocessed scene release with other metadata
+        # segments - otherwise a plain hyphenated title with no other tags
+        # (e.g. a bare "Spider-Man") would lose its second word.
+        name = name.strip()
+        if "." in name:
+            name = re.sub(r"-[A-Za-z0-9]+$", "", name)
+
         # Remove extra stacked extensions (e.g. .mkv.zip.001)
         name = re.sub(r"\.(zip|7z|rar|mkv|avi|mp4)$", "", name, flags=re.IGNORECASE)
 
         # Strip whitespace left by noise patterns before parsing
         name = name.strip()
+
+        # Extract a scene-release year (e.g. "The.Matrix.1999...") into its own
+        # field rather than leaving it in the free-text query: TMDB search is
+        # a literal text match, and an appended year with no matching digits
+        # in the title reliably returns zero results instead of being ignored.
+        year = None
+        year_match = re.search(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)", name)
+        if year_match:
+            year = int(year_match.group(1))
+            name = name[:year_match.start()] + name[year_match.end():]
 
         # Extract season and episode if TV type
         season = None
@@ -145,7 +167,8 @@ class TMDB:
             "clean_name": name,
             "type": content_type,
             "season": season,
-            "episode": episode
+            "episode": episode,
+            "year": year
         }
     
     def identify_by_tmdbid(self, tmdbid: int, content_type: str) -> dict:
@@ -232,7 +255,12 @@ class TMDB:
         """Return the result whose title most closely matches clean_name.
 
         Scoring combines title similarity (primary) with popularity (tiebreaker).
-        A minimum similarity of 0.4 is required to accept any match.
+        A minimum similarity of 0.4 is required to accept any match. Compares
+        against both the localized title and ``original_title``/``original_name``:
+        scene-release filenames use the original (usually English) title, which
+        TMDB_CONTENT_LANGUAGE can localize away from (e.g. "The Wire" -> "Bajo
+        escucha" in es-ES), so matching on the localized title alone can pick an
+        unrelated result that happens to look more like the filename.
         """
         if not results:
             return None
@@ -241,7 +269,10 @@ class TMDB:
 
         def score(r: dict) -> tuple:
             title = TMDB._normalize(r.get("title") or r.get("name") or "")
+            original = TMDB._normalize(r.get("original_title") or r.get("original_name") or "")
             sim = difflib.SequenceMatcher(None, query_norm, title).ratio()
+            if original:
+                sim = max(sim, difflib.SequenceMatcher(None, query_norm, original).ratio())
             pop = float(r.get("popularity") or 0)
             return (sim, pop)
 
@@ -256,16 +287,24 @@ class TMDB:
         best["_match_score"] = best_sim
         return best
 
-    def _search_and_match(self, query: str, content_type: str) -> dict | None:
-        """Search TMDB for ``query`` and return the best matching result."""
+    def _search_and_match(self, query: str, content_type: str, year: int | None = None) -> dict | None:
+        """Search TMDB for ``query`` and return the best matching result.
+
+        ``year``, when known, is passed as TMDB's own year filter rather than
+        appended to the query text: TMDB search is a literal text match, and a
+        year with no matching digits anywhere in the title reliably returns
+        zero results instead of just being ignored.
+        """
         search = tmdb.Search()
         response = None
 
         if content_type == "movie":
-            search.movie(query=query, language=TMDB_CONTENT_LANGUAGE)
+            kwargs = {"year": year} if year else {}
+            search.movie(query=query, language=TMDB_CONTENT_LANGUAGE, **kwargs)
             response = self._best_match(search.results, query, "movie")
         elif content_type == "tv":
-            search.tv(query=query, language=TMDB_CONTENT_LANGUAGE)
+            kwargs = {"first_air_date_year": year} if year else {}
+            search.tv(query=query, language=TMDB_CONTENT_LANGUAGE, **kwargs)
             response = self._best_match(search.results, query, "tv")
 
         if not response:
@@ -284,12 +323,12 @@ class TMDB:
             response = self.identify_by_tmdbid(file["tmdbid"], file["type"])
 
         if not response:
-            response = self._search_and_match(file["clean_name"], file["type"])
+            response = self._search_and_match(file["clean_name"], file["type"], file["year"])
 
             if not response:
                 normalized = self._normalize(file["clean_name"])
                 if normalized and normalized != file["clean_name"].lower():
-                    response = self._search_and_match(normalized, file["type"])
+                    response = self._search_and_match(normalized, file["type"], file["year"])
 
         return response or {}
 

@@ -26,17 +26,28 @@ public static partial class WatchedFileMessages
     }
 
     public static string BuildNotifyText(
-        string filename, string? mediaType, string? title, int? season, int? episode, double confidence)
+        string filename, string? mediaType, string? title, int? season, int? episode, double confidence,
+        int? tmdbId = null)
     {
         var guessLine = title is null
             ? "No automatic guess could be made for this file."
-            : $"Guess: {title}{FormatSeasonEpisode(season, episode)} ({mediaType})\nConfidence: {confidence:P0}";
+            : $"Guess: {title}{FormatSeasonEpisode(season, episode)} ({mediaType})\nConfidence: {confidence:P0}"
+              + BuildTmdbLinkSuffix(tmdbId, mediaType);
 
         return $"""
                 {NotifyPrefix}{filename}
 
                 {guessLine}
                 """;
+    }
+
+    /// <summary>Appends a clickable TMDB link so a guess can be sanity-checked before
+    /// confirming - title alone doesn't distinguish e.g. a well-known film from an obscure
+    /// same-named one, or a series whose Telegram-displayed title is localized.</summary>
+    private static string BuildTmdbLinkSuffix(int? tmdbId, string? mediaType)
+    {
+        if (tmdbId is null || mediaType is not ("movie" or "tv")) return "";
+        return $"\n<a href=\"https://www.themoviedb.org/{mediaType}/{tmdbId}\">TMDB</a>";
     }
 
     /// <summary>Recovers the filename from a notify message's text, so the Correct callback

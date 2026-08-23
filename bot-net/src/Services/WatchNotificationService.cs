@@ -1,6 +1,7 @@
 using Bot.CallbackQueries.Callbacks.Watch;
 using Bot.Models;
 using Bot.Utils;
+using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace Bot.Services;
@@ -59,9 +60,11 @@ public class WatchNotificationService
         foreach (var row in pending)
         {
             var text = WatchedFileMessages.BuildNotifyText(
-                row.Filename, row.GuessMediaType, row.GuessTitle, row.GuessSeason, row.GuessEpisode, row.Confidence);
+                row.Filename, row.GuessMediaType, row.GuessTitle, row.GuessSeason, row.GuessEpisode, row.Confidence,
+                row.GuessTmdbId);
 
-            var sent = await _bot.SendMessage(AuthConfig.OwnerUserId, text, replyMarkup: BuildNotifyButtons(row));
+            var sent = await _bot.SendMessage(AuthConfig.OwnerUserId, text, ParseMode.Html,
+                replyMarkup: BuildNotifyButtons(row));
 
             _registry.Track(row.Id, sent.Chat.Id, sent.MessageId);
 

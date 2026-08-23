@@ -42,6 +42,26 @@ public class WatchedFileMessagesTests
         Assert.Contains("No automatic guess", text);
     }
 
+    [Theory]
+    [InlineData("movie", "https://www.themoviedb.org/movie/603")]
+    [InlineData("tv", "https://www.themoviedb.org/tv/603")]
+    public void BuildNotifyText_IncludesTmdbLinkWhenTmdbIdIsKnown(string mediaType, string expectedUrl)
+    {
+        var text = WatchedFileMessages.BuildNotifyText(
+            "Movie.mkv", mediaType, "Some Title", null, null, 0.9, tmdbId: 603);
+
+        Assert.Contains($"<a href=\"{expectedUrl}\">TMDB</a>", text);
+    }
+
+    [Fact]
+    public void BuildNotifyText_OmitsTmdbLinkWhenTmdbIdIsNull()
+    {
+        var text = WatchedFileMessages.BuildNotifyText(
+            "Movie.mkv", "movie", "Some Title", null, null, 0.9);
+
+        Assert.DoesNotContain("themoviedb.org", text);
+    }
+
     [Fact]
     public void ExtractFilenameFromNotifyText_RoundTripsWithBuildNotifyText()
     {
