@@ -50,6 +50,7 @@ def _apply_guess(row: WatchedFile) -> None:
     row.guess_media_type = guess["media_type"]
     row.guess_tmdb_id = guess["tmdb_id"]
     row.guess_title = guess["title"]
+    row.guess_year = guess["year"]
     row.guess_season = guess["season"]
     row.guess_episode = guess["episode"]
     row.confidence = guess["confidence"]
@@ -157,10 +158,13 @@ def _resolve(row: WatchedFile, payload: WatchedFileResolveIn) -> dict:
     media_type = tmdb_result.get("media_type")
     title = tmdb_result.get("title") if media_type == "movie" else tmdb_result.get("name")
     title = title or tmdb_result.get("title") or tmdb_result.get("name")
+    release_date = tmdb_result.get("release_date") if media_type == "movie" else tmdb_result.get("first_air_date")
+    year = int(release_date[:4]) if release_date else None
 
     row.guess_tmdb_id = payload.tmdb_id
     row.guess_media_type = media_type
     row.guess_title = title
+    row.guess_year = year
     if payload.season is not None:
         row.guess_season = payload.season
     if payload.episode is not None:
@@ -175,6 +179,7 @@ def _resolve(row: WatchedFile, payload: WatchedFileResolveIn) -> dict:
         "tmdb_id": row.guess_tmdb_id,
         "media_type": row.guess_media_type,
         "title": row.guess_title,
+        "year": row.guess_year,
         "season": row.guess_season,
         "episode": row.guess_episode,
         "status": row.status,

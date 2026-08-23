@@ -9,10 +9,21 @@ public class WatchedFileNamingTests
     private const string ShowsDir = "/data/jellyfin/shows";
 
     [Fact]
-    public void BuildDestinationPath_MovieUsesTmdbIdTagWithoutYear()
+    public void BuildDestinationPath_MovieUsesYearAndTmdbIdTag()
     {
         var path = WatchedFileNaming.BuildDestinationPath(
-            MoviesDir, ShowsDir, "movie", "the great escape", 1234, null, null, ".mkv");
+            MoviesDir, ShowsDir, "movie", "the great escape", 1234, 1963, null, null, ".mkv");
+
+        Assert.Equal(
+            "/data/jellyfin/movies/The Great Escape (1963) [tmdbid-1234]/The Great Escape (1963).mkv",
+            path);
+    }
+
+    [Fact]
+    public void BuildDestinationPath_MovieOmitsYearWhenMissing()
+    {
+        var path = WatchedFileNaming.BuildDestinationPath(
+            MoviesDir, ShowsDir, "movie", "the great escape", 1234, null, null, null, ".mkv");
 
         Assert.Equal(
             "/data/jellyfin/movies/The Great Escape [tmdbid-1234]/The Great Escape.mkv",
@@ -23,7 +34,7 @@ public class WatchedFileNamingTests
     public void BuildDestinationPath_ShowUsesTmdbIdTagAndSeasonEpisode()
     {
         var path = WatchedFileNaming.BuildDestinationPath(
-            MoviesDir, ShowsDir, "tv", "some show", 5678, 2, 5, ".mp4");
+            MoviesDir, ShowsDir, "tv", "some show", 5678, null, 2, 5, ".mp4");
 
         Assert.Equal(
             "/data/jellyfin/shows/Some Show [tmdbid-5678]/Season 02/Some Show S02E05.mp4",
@@ -34,7 +45,7 @@ public class WatchedFileNamingTests
     public void BuildDestinationPath_ShowDefaultsSeasonAndEpisodeWhenMissing()
     {
         var path = WatchedFileNaming.BuildDestinationPath(
-            MoviesDir, ShowsDir, "tv", "some show", 5678, null, null, ".mp4");
+            MoviesDir, ShowsDir, "tv", "some show", 5678, null, null, null, ".mp4");
 
         Assert.Equal(
             "/data/jellyfin/shows/Some Show [tmdbid-5678]/Season 01/Some Show S01E00.mp4",

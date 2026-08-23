@@ -28,6 +28,7 @@ def upgrade() -> None:
     sa.Column('guess_media_type', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('guess_tmdb_id', sa.Integer(), nullable=True),
     sa.Column('guess_title', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('guess_year', sa.Integer(), nullable=True),
     sa.Column('guess_season', sa.Integer(), nullable=True),
     sa.Column('guess_episode', sa.Integer(), nullable=True),
     sa.Column('confidence', sa.Float(), nullable=False),

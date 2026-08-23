@@ -19,9 +19,9 @@ public static class WatchedFileMoveFlow
     /// warn about a collision) before actually committing to the move.
     /// </summary>
     public static string BuildProspectiveDestination(
-        string mediaType, string title, int tmdbId, int? season, int? episode, string filename) =>
+        string mediaType, string title, int tmdbId, int? year, int? season, int? episode, string filename) =>
         WatchedFileNaming.BuildDestinationPath(
-            MediaLibrary.MoviesDir, MediaLibrary.ShowsDir, mediaType, title, tmdbId, season, episode,
+            MediaLibrary.MoviesDir, MediaLibrary.ShowsDir, mediaType, title, tmdbId, year, season, episode,
             Path.GetExtension(filename));
 
     /// Backend-reporting part, with no Telegram message to edit — reused by the web poller.
@@ -43,8 +43,8 @@ public static class WatchedFileMoveFlow
         }
 
         var destPath = BuildProspectiveDestination(
-            resolution.MediaType, resolution.Title, resolution.TmdbId, resolution.Season, resolution.Episode,
-            resolution.Filename);
+            resolution.MediaType, resolution.Title, resolution.TmdbId, resolution.Year, resolution.Season,
+            resolution.Episode, resolution.Filename);
         destPath = MediaNaming.ResolveFreePath(destPath, null);
 
         // The move itself makes the source disappear from the downloads folder, which the

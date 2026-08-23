@@ -7,7 +7,7 @@ public class WatchedFileResolutionTests
 {
     private static WatchedFile MakeRow(
         int? guessTmdbId = 42, string? guessMediaType = "movie", string? guessTitle = "Some Movie",
-        int? guessSeason = null, int? guessEpisode = null, string status = "confirmed") =>
+        int? guessYear = 2024, int? guessSeason = null, int? guessEpisode = null, string status = "confirmed") =>
         new()
         {
             Id = 7,
@@ -16,6 +16,7 @@ public class WatchedFileResolutionTests
             GuessTmdbId = guessTmdbId,
             GuessMediaType = guessMediaType,
             GuessTitle = guessTitle,
+            GuessYear = guessYear,
             GuessSeason = guessSeason,
             GuessEpisode = guessEpisode,
             Status = status,
@@ -35,6 +36,7 @@ public class WatchedFileResolutionTests
         Assert.Equal(42, resolution.TmdbId);
         Assert.Equal("movie", resolution.MediaType);
         Assert.Equal("Some Movie", resolution.Title);
+        Assert.Equal(2024, resolution.Year);
         Assert.Equal(2, resolution.Season);
         Assert.Equal(5, resolution.Episode);
         Assert.Equal("corrected", resolution.Status);

@@ -13,6 +13,7 @@ public class WatchedFile
     [JsonPropertyName("guess_media_type")] public string? GuessMediaType { get; set; }
     [JsonPropertyName("guess_tmdb_id")] public int? GuessTmdbId { get; set; }
     [JsonPropertyName("guess_title")] public string? GuessTitle { get; set; }
+    [JsonPropertyName("guess_year")] public int? GuessYear { get; set; }
     [JsonPropertyName("guess_season")] public int? GuessSeason { get; set; }
     [JsonPropertyName("guess_episode")] public int? GuessEpisode { get; set; }
     [JsonPropertyName("confidence")] public double Confidence { get; set; }

@@ -45,7 +45,7 @@ public class AskConfirmWatchedFileCallback : ICallbackQuery
         }
 
         var destPath = WatchedFileMoveFlow.BuildProspectiveDestination(
-            row.GuessMediaType, row.GuessTitle, _tmdbId, _season, _episode, row.Filename);
+            row.GuessMediaType, row.GuessTitle, _tmdbId, row.GuessYear, _season, _episode, row.Filename);
         var collision = System.IO.File.Exists(destPath);
 
         var text = WatchedFileMessages.BuildConfirmPromptText(row.Filename, destPath, collision);

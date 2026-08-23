@@ -13,6 +13,7 @@ public class WatchedFileResolution
     [JsonPropertyName("tmdb_id")] public int TmdbId { get; set; }
     [JsonPropertyName("media_type")] public string MediaType { get; set; } = "";
     [JsonPropertyName("title")] public string Title { get; set; } = "";
+    [JsonPropertyName("year")] public int? Year { get; set; }
     [JsonPropertyName("season")] public int? Season { get; set; }
     [JsonPropertyName("episode")] public int? Episode { get; set; }
     [JsonPropertyName("status")] public string Status { get; set; } = "";
@@ -34,6 +35,7 @@ public class WatchedFileResolution
             TmdbId = row.GuessTmdbId.Value,
             MediaType = row.GuessMediaType,
             Title = row.GuessTitle,
+            Year = row.GuessYear,
             Season = row.GuessSeason,
             Episode = row.GuessEpisode,
             Status = row.Status,

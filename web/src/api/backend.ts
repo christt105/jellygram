@@ -71,6 +71,7 @@ export interface WatchedFile {
   guess_media_type?: 'movie' | 'tv' | null;
   guess_tmdb_id?: number | null;
   guess_title?: string | null;
+  guess_year?: number | null;
   guess_season?: number | null;
   guess_episode?: number | null;
   confidence: number;
@@ -88,6 +89,7 @@ export interface WatchedFileResolution {
   tmdb_id: number;
   media_type: string;
   title: string;
+  year?: number | null;
   season?: number | null;
   episode?: number | null;
   status: string;

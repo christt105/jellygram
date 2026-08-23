@@ -2,21 +2,20 @@ namespace Bot.Utils;
 
 /// <summary>
 /// Builds the same mnamer-style destination path <see cref="Services.DownloadService"/> uses,
-/// for a file resolved through the /watch confirm/correct flow. The confirm/correct endpoints
-/// return no release year or TVDB id (the backend never fetches or stores them for watched
-/// files), so both are passed as null here; <see cref="MnamerNaming"/> already treats them as
-/// optional, it just omits the year/falls back to the TMDB id tag.
+/// for a file resolved through the /watch confirm/correct flow. The backend never fetches or
+/// stores a TVDB id for watched files, so shows always fall back to the TMDB id tag;
+/// <see cref="MnamerNaming"/> already treats both as optional.
 /// </summary>
 public static class WatchedFileNaming
 {
     public static string BuildDestinationPath(
-        string moviesDir, string showsDir, string mediaType, string title, int tmdbId,
+        string moviesDir, string showsDir, string mediaType, string title, int tmdbId, int? year,
         int? season, int? episode, string extension)
     {
         if (mediaType == "movie")
         {
-            var dirName = MnamerNaming.MovieDirectory(title, null, tmdbId);
-            var fileName = MnamerNaming.MovieFile(title, null, "", extension);
+            var dirName = MnamerNaming.MovieDirectory(title, year, tmdbId);
+            var fileName = MnamerNaming.MovieFile(title, year, "", extension);
             return Path.Combine(moviesDir, dirName, fileName);
         }
 

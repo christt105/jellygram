@@ -365,10 +365,17 @@ def guess_watched_file(tmdb: TMDB, filename: str) -> Dict[str, Any]:
         title = tmdb_result.get("title") if media_type == "movie" else tmdb_result.get("name")
         title = title or tmdb_result.get("title") or tmdb_result.get("name")
 
+    year = None
+    if tmdb_result:
+        release_date = tmdb_result.get("release_date") if media_type == "movie" else tmdb_result.get("first_air_date")
+        if release_date:
+            year = int(release_date[:4])
+
     return {
         "media_type": media_type,
         "tmdb_id": tmdb_id,
         "title": title,
+        "year": year,
         "season": parsed.get("season"),
         "episode": parsed.get("episode"),
         "confidence": confidence,

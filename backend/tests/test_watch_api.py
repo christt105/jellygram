@@ -11,16 +11,21 @@ import routers.watch as watch_module
 class StubTMDB:
     def identify_by_filename(self, filename):
         if "S01E02" in filename or "S01E03" in filename:
-            return {"id": 42, "name": "Stub Show", "media_type": "tv", "_match_score": 0.9}
+            return {
+                "id": 42, "name": "Stub Show", "media_type": "tv", "_match_score": 0.9,
+                "first_air_date": "2020-05-01",
+            }
         if "[tmdbid-777]" in filename:
             return {"id": 777, "title": "Stub Movie", "media_type": "movie"}
         return {}
 
     def identify_by_tmdbid(self, tmdb_id, content_type):
         if tmdb_id == 42:
-            return {"id": 42, "name": "Stub Show", "media_type": "tv"}
+            return {"id": 42, "name": "Stub Show", "media_type": "tv", "first_air_date": "2020-05-01"}
         if tmdb_id == 100:
-            return {"id": 100, "title": "Corrected Movie", "media_type": "movie"}
+            return {
+                "id": 100, "title": "Corrected Movie", "media_type": "movie", "release_date": "2019-03-01",
+            }
         return {}
 
 
@@ -58,6 +63,7 @@ def test_report_new_file_runs_guess(client):
     assert data["guess_tmdb_id"] == 42
     assert data["guess_title"] == "Stub Show"
     assert data["guess_media_type"] == "tv"
+    assert data["guess_year"] == 2020
     assert data["guess_season"] == 1
     assert data["guess_episode"] == 2
     assert data["confidence"] == 0.9
@@ -149,6 +155,7 @@ def test_confirm_returns_final_identity_and_updates_status(client):
     assert data["tmdb_id"] == 42
     assert data["media_type"] == "tv"
     assert data["title"] == "Stub Show"
+    assert data["year"] == 2020
 
 
 def test_correct_overrides_tmdb_id_and_season_episode(client):
@@ -159,6 +166,7 @@ def test_correct_overrides_tmdb_id_and_season_episode(client):
     assert data["status"] == "corrected"
     assert data["tmdb_id"] == 100
     assert data["title"] == "Corrected Movie"
+    assert data["year"] == 2019
     assert data["season"] == 2
     assert data["episode"] == 5
 
