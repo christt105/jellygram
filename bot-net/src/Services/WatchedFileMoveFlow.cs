@@ -47,16 +47,28 @@ public static class WatchedFileMoveFlow
             resolution.Filename);
         destPath = MediaNaming.ResolveFreePath(destPath, null);
 
-        var (ok, error) = await SafeFileMover.MoveAsync(sourcePath, destPath);
-
-        if (ok)
+        // The move itself makes the source disappear from the downloads folder, which the
+        // FileSystemWatcher sees as a Deleted event indistinguishable from a real deletion by
+        // hand. Marking the path in-flight lets it recognize and ignore that expected event
+        // instead of racing the "moved" patch below with a spurious "removed" one.
+        InFlightWatchedFileMoves.Mark(resolution.Path);
+        try
         {
-            await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "moved", movedPath: destPath);
-            return new MoveOutcome(true, WatchedFileMessages.BuildMovedText(resolution.Filename, destPath));
-        }
+            var (ok, error) = await SafeFileMover.MoveAsync(sourcePath, destPath);
 
-        await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "error", errorMessage: error);
-        return new MoveOutcome(false, WatchedFileMessages.BuildErrorText(resolution.Filename, error));
+            if (ok)
+            {
+                await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "moved", movedPath: destPath);
+                return new MoveOutcome(true, WatchedFileMessages.BuildMovedText(resolution.Filename, destPath));
+            }
+
+            await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "error", errorMessage: error);
+            return new MoveOutcome(false, WatchedFileMessages.BuildErrorText(resolution.Filename, error));
+        }
+        finally
+        {
+            InFlightWatchedFileMoves.Unmark(resolution.Path);
+        }
     }
 
     public static async Task ExecuteAsync(

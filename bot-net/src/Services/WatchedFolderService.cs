@@ -105,6 +105,15 @@ public class WatchedFolderService
         if (!MediaLibrary.IsVideo(e.FullPath)) return;
 
         var relativePath = WatchedFileReconciliation.ToRelativePath(_root, e.FullPath);
+
+        // A file bot-net itself is moving into the library also disappears from here, which
+        // looks identical to a real deletion by hand — see InFlightWatchedFileMoves.
+        if (InFlightWatchedFileMoves.IsInFlight(relativePath))
+        {
+            Log.Info($"[WatchedFolder] {relativePath} disappeared because it's being moved by bot-net itself, ignoring.");
+            return;
+        }
+
         _ = _apiClient.MarkWatchedFileMissingAsync(relativePath);
     }
 
