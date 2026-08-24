@@ -57,9 +57,11 @@ class TMDB:
         # ("...by.Mony2007"), and reading one as a release year filters the
         # TMDB search by a wrong year and returns nothing at all.
         year = None
+        year_prefix = None
         year_match = re.search(r"(?<![^\W_])(19\d{2}|20\d{2})(?![^\W_])", name)
         if year_match:
             year = int(year_match.group(1))
+            year_prefix = name[:year_match.start()]
             name = name[:year_match.start()] + name[year_match.end():]
 
         # Remove common noise patterns (resolution, quality, part numbers, etc.)
@@ -68,6 +70,7 @@ class TMDB:
             r"\b(?:Micro)?4K\b",
             r"\bHDR10\+?\b",
             r"\bHDR\b",
+            r"\b(?:8|10|12)-?[Bb]it\b",   # 10Bit, 8-bit (color depth)
             r"\bBlu[- ]?ray\b",
             r"\bHEVC\b",
             r"\bWEB[- ]?DL\b",
@@ -154,6 +157,18 @@ class TMDB:
                             season = int(match_season.group(1))
 
         content_type = detect_hint_type(name)
+
+        # For movies, the title always sits before the release year in every
+        # convention seen so far - everything after it is quality/codec/
+        # uploader metadata. The noise-pattern denylist above has to be
+        # extended every time a new tag shows up (10Bit, NF, a two-part
+        # uploader nick like "aurora45-xusman") and still misses the next
+        # one; truncating at the year sidesteps the denylist entirely for
+        # the common case where a year was actually found.
+        if content_type == "movie" and year_prefix is not None:
+            truncated = re.sub(r"[\s.\-_(\[]+$", "", year_prefix)
+            if truncated.strip():
+                name = truncated
 
         # Remove episode markers (e.g. "1x125", "S05E10") from the clean name
         if content_type == "tv":

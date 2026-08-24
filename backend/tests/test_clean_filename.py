@@ -130,10 +130,15 @@ from tmdb import TMDB
         "year": None
     }),
     # Real cinegram library filenames (uploader convention: bracket-less
-    # "tmdbid_<id>" instead of "[tmdbid-<id>]").
+    # "tmdbid_<id>" instead of "[tmdbid-<id>]"). "LasCositas" sits after the
+    # year, so the year-truncation in clean_filename drops it along with the
+    # rest of the tail - it's the uploader's own signature, not part of the
+    # title. Doesn't affect identification either way: a tmdbid is present,
+    # so identify_by_filename resolves via identify_by_tmdbid and never uses
+    # clean_name for a TMDB search.
     ("Arrietty_y_el_mundo_de_los_diminutos_2010_tmdbid_51739_LasCositas.001", {
         "tmdbid": 51739,
-        "clean_name": "Arrietty y el mundo de los diminutos LasCositas",
+        "clean_name": "Arrietty y el mundo de los diminutos",
         "type": "movie",
         "season": None,
         "episode": None,
@@ -214,6 +219,16 @@ from tmdb import TMDB
         "episode": None,
         "year": 2022
     }),
+    # Color-depth tag ("10Bit") wasn't in the noise list and rode into the
+    # search query, dragging the TMDB match score down enough to miss.
+    ("Toy.Story.4.(2019).(Spanish.English.Subs).BDRip.2160p.x265.10Bit.HDR-EAC3.AC3.by.enjoy.(hispashare.org).mkv", {
+        "tmdbid": None,
+        "clean_name": "Toy Story 4",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2019
+    }),
     # An uploader nickname ending in digits must not be read as a release
     # year: doing so filters the TMDB search by a bogus year, which returns
     # nothing at all rather than just ranking badly.
@@ -241,6 +256,81 @@ from tmdb import TMDB
         "type": "movie",
         "season": None,
         "episode": None,
+        "year": None
+    }),
+    # Two-part uploader nicks joined by a hyphen ("aurora45-xusman") defeat
+    # the "by <uploader>" and trailing-group-tag regexes, which only strip a
+    # single unhyphenated word. Truncating the movie name at the year sidesteps
+    # this instead of extending those regexes' character classes.
+    ("The.Surfer.(2024).(Spanish.English.Subs).BDRip.1080p.x264-EAC3.by.aurora45-xusman.(nocturniap2p).mkv", {
+        "tmdbid": None,
+        "clean_name": "The Surfer",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2024
+    }),
+    ("Shelter.El.protector.(2026).(Spanish.English.Subs).BDRip.1080p.x264-EAC3.by.diavliyo-xusman.(nocturniap2p).mkv", {
+        "tmdbid": None,
+        "clean_name": "Shelter El protector",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2026
+    }),
+    ("Altas.capacidades.(2026).(Spanish).WEB-DL.1080p.x264-EAC3.by.xusman.(nocturniap2p).mkv", {
+        "tmdbid": None,
+        "clean_name": "Altas capacidades",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2026
+    }),
+    # A trailing number that's part of the title itself (not a part/disc
+    # number) must survive the year truncation.
+    ("Stand.By.Me.Doraemon.2.(2020).(Spanish).WEBRip.1080p.x265-AC3.by.s1d3sh0w.(hispashare.org).mkv", {
+        "tmdbid": None,
+        "clean_name": "Stand By Me Doraemon 2",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2020
+    }),
+    ("Elysium.(2013).(Spanish.English.Subs).BDrip.1080p.x265-AC3.by.SparroW.mkv", {
+        "tmdbid": None,
+        "clean_name": "Elysium",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2013
+    }),
+    # A streaming-platform source tag ("NF" for Netflix) has no dedicated
+    # noise pattern - it isn't needed, the year truncation drops it anyway.
+    ("Enola.Holmes.(2020).(Spanish.English.Subs).NF.WEB-DL.1080p.x264-EAC3.mkv", {
+        "tmdbid": None,
+        "clean_name": "Enola Holmes",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2020
+    }),
+    # TV titles with no year at all are unaffected by the movie-only
+    # year-truncation branch; episode-marker splitting alone must still
+    # isolate the show title from the episode title and release tags.
+    ("La.casa.de.la.pradera.1x04 .Apreciemos.la.vida. (Spanish.English .Subs).WEBRip.1080p.x265-EAC3.by .piter332.(hispashare.org).mkv", {
+        "tmdbid": None,
+        "clean_name": "La casa de la pradera",
+        "type": "tv",
+        "season": 1,
+        "episode": 4,
+        "year": None
+    }),
+    ("Spider-Noir.1x01.Pase.a.mi.despacho.BN.(Spanish.English.Subs).WEBRip.1080p.x265-EAC3.EAC3.Atmos.by.Legan.mkv", {
+        "tmdbid": None,
+        "clean_name": "Spider-Noir",
+        "type": "tv",
+        "season": 1,
+        "episode": 1,
         "year": None
     }),
 ])
