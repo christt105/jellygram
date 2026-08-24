@@ -15,6 +15,9 @@ public class DownloadTask
     [JsonPropertyName("name_suffix")] public string? NameSuffix { get; set; }
     [JsonPropertyName("tmdb_id")] public int? TmdbId { get; set; }
     [JsonPropertyName("tvdb_id")] public int? TvdbId { get; set; }
+    [JsonPropertyName("overview")] public string? Overview { get; set; }
+    [JsonPropertyName("episode_title")] public string? EpisodeTitle { get; set; }
+    [JsonPropertyName("local_metadata")] public bool LocalMetadata { get; set; }
     [JsonPropertyName("files")] public DownloadFileItem[] Files { get; set; }
 }
 

@@ -122,15 +122,21 @@
             
             <div class="season-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 1rem;">
               <h3 style="font-size: 1.5rem; margin: 0;">Season {{ season.season_number }}</h3>
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                <button @click="sendSeasonPreview(season.season_number)" class="glass-button" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" :disabled="sendingSeasonPreview === season.season_number" :title="'Send season Info & Files to Telegram'">
-                  <span v-if="sendingSeasonPreview === season.season_number">⏳</span>
-                  <span v-else>📨</span>
-                  <span style="margin-left: 4px;">{{ sendingSeasonPreview === season.season_number ? 'Sending...' : 'Send' }}</span>
-                </button>
-                <button @click="downloadSeason(season.season_number)" class="glass-button primary">
-                  <DownloadCloud :size="16" /> Download Season
-                </button>
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #d1d5db; cursor: pointer;" title="Non-official numbering: cinegram writes local .nfo files for this season instead of relying on Jellyfin's online providers">
+                  <input type="checkbox" :checked="season.local_metadata" @change="toggleSeasonLocalMetadata(season)" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--jellyfin-blue);" />
+                  Local metadata (non-official)
+                </label>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                  <button @click="sendSeasonPreview(season.season_number)" class="glass-button" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" :disabled="sendingSeasonPreview === season.season_number" :title="'Send season Info & Files to Telegram'">
+                    <span v-if="sendingSeasonPreview === season.season_number">⏳</span>
+                    <span v-else>📨</span>
+                    <span style="margin-left: 4px;">{{ sendingSeasonPreview === season.season_number ? 'Sending...' : 'Send' }}</span>
+                  </button>
+                  <button @click="downloadSeason(season.season_number)" class="glass-button primary">
+                    <DownloadCloud :size="16" /> Download Season
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -199,7 +205,8 @@
               <div v-for="ep in season.episodes" :key="ep.id" class="episode-item glass-panel" style="flex-direction: column; align-items: stretch; gap: 0;">
                 <div class="ep-info" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
                   <strong style="color: var(--jellyfin-blue);">E{{ ep.episode_number }}</strong>
-                  <span style="font-weight: 500;">{{ ep.title?.replace(/^Episode\s+\d+$/, '') || 'Episode ' + ep.episode_number }}</span>
+                  <input v-if="season.local_metadata" :value="ep.title" @change="updateEpisodeTitle(season, ep, ($event.target as HTMLInputElement).value)" type="text" placeholder="Episode title" style="width: 60%; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-weight: 500;" />
+                  <span v-else style="font-weight: 500;">{{ ep.title?.replace(/^Episode\s+\d+$/, '') || 'Episode ' + ep.episode_number }}</span>
                 </div>
                 
                 <div v-if="ep.collections && ep.collections.length > 0" class="ep-collections" style="width: 100%;">
@@ -837,6 +844,40 @@ const downloadSeason = async (seasonNumber: number) => {
     }
   } catch (err) {
     console.error(err)
+  }
+}
+
+const toggleSeasonLocalMetadata = async (season: any) => {
+  const previous = season.local_metadata
+  season.local_metadata = !previous
+  try {
+    const res = await fetch(`${backendUrl}/series/${props.id}/seasons/${season.season_number}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ local_metadata: season.local_metadata })
+    })
+    if (!res.ok) throw new Error('Request failed')
+  } catch (err) {
+    console.error(err)
+    season.local_metadata = previous
+    alert("Error updating season.")
+  }
+}
+
+const updateEpisodeTitle = async (season: any, ep: any, newTitle: string) => {
+  const previous = ep.title
+  ep.title = newTitle
+  try {
+    const res = await fetch(`${backendUrl}/series/${props.id}/seasons/${season.season_number}/episodes/${ep.episode_number}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle })
+    })
+    if (!res.ok) throw new Error('Request failed')
+  } catch (err) {
+    console.error(err)
+    ep.title = previous
+    alert("Error updating episode title.")
   }
 }
 

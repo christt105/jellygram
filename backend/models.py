@@ -44,6 +44,7 @@ class Season(SQLModel, table=True):
     season_number: int
     tags: Optional[str] = None
     notes: Optional[str] = None
+    local_metadata: bool = Field(default=False)
 
     series: "Series" = Relationship(back_populates="seasons")
     episodes: List["Episode"] = Relationship(back_populates="season")

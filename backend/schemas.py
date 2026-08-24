@@ -69,6 +69,7 @@ class EpisodeOut(BaseModel):
 class SeasonOut(BaseModel):
     id: int
     season_number: int
+    local_metadata: bool
     episodes: List[EpisodeOut] = []
     collections: List[CollectionOut] = []
 
@@ -115,6 +116,12 @@ class SeriesUpdate(BaseModel):
     poster_path: Optional[str] = None
     overview: Optional[str] = None
     release_year: Optional[int] = None
+
+class SeasonUpdate(BaseModel):
+    local_metadata: Optional[bool] = None
+
+class EpisodeUpdate(BaseModel):
+    title: Optional[str] = None
 
 class CollectionUpdate(BaseModel):
     name: Optional[str] = None
