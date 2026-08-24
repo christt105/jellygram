@@ -62,7 +62,7 @@ def test_fresh_database_upgrades_to_head(tmp_path):
     with engine.connect() as connection:
         tables = inspect(connection).get_table_names()
     assert "alembic_version" in tables
-    assert {"movie", "series", "season", "episode", "collection", "file"} <= set(tables)
+    assert {"movie", "series", "season", "episode", "collection", "file", "watchedfile"} <= set(tables)
 
 
 def test_migrated_schema_matches_the_models(tmp_path):
@@ -108,6 +108,40 @@ def test_user_message_id_adopts_existing_files_without_losing_data(tmp_path):
         assert message_id == 4242
         assert user_message_id is None
         assert filename == "Mugen Train.mkv"
+
+
+def test_watched_file_table_lands_on_a_database_with_existing_data(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'stored.db'}")
+    build_database_with_a_file(engine, "0004_user_message_id")
+
+    with engine.begin() as connection:
+        upgrade_to(connection, "head")
+
+    with engine.connect() as connection:
+        tables = inspect(connection).get_table_names()
+        assert "watchedfile" in tables
+        # Pre-existing data from before the migration must survive untouched.
+        filename = connection.exec_driver_sql("select filename from file").scalar()
+        assert filename == "Mugen Train.mkv"
+
+
+def test_watched_file_row_can_be_inserted_and_defaults_apply(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")
+    with engine.begin() as connection:
+        upgrade_to(connection, "head")
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO watchedfile (path, filename, filesize, first_seen_at, confidence, status)"
+            " VALUES ('Show.Name.S01E02.mkv', 'Show.Name.S01E02.mkv', 1048576, '2026-08-22 00:00:00', 0.0, 'pending')"
+        )
+
+    with engine.connect() as connection:
+        status, confidence = connection.exec_driver_sql(
+            "select status, confidence from watchedfile"
+        ).one()
+        assert status == "pending"
+        assert confidence == 0.0
 
 
 def test_legacy_database_needs_a_baseline_stamp(tmp_path):

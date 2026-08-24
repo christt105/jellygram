@@ -55,6 +55,12 @@ public class Worker : BackgroundService
             var uploadService = new UploadService(bot, apiClient, _queue, userClient, botDispatcher.UploadEchoes);
             _ = uploadService.PollAndProcessAsync(stoppingToken);
 
+            var watchedFolderService = new WatchedFolderService(apiClient);
+            _ = watchedFolderService.RunAsync(stoppingToken);
+
+            var watchNotificationService = new WatchNotificationService(bot, apiClient, botDispatcher.WatchedFileMessages);
+            _ = watchNotificationService.PollAndProcessAsync(stoppingToken);
+
             _ = _queue.StartProcessing(stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested) await Task.Delay(1000, stoppingToken);

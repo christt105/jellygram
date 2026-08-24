@@ -29,7 +29,8 @@ public class CommandHandler
             new OrphansCommand(bot.Bot, bot.ApiClient),
             new BackupCommand(bot.Bot, bot.ApiClient),
             new AddCommand(bot),
-            new ImportCommand(bot)
+            new ImportCommand(bot),
+            new ReidentifyWatchedFilesCommand(bot)
         };
 
         if (bot.UserClient != null)

@@ -125,6 +125,38 @@ class DownloadTask(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 
+class WatchedFile(SQLModel, table=True):
+    """A file seen by bot-net's downloads-folder watcher, guessed against TMDB.
+
+    status flow: pending -> notified -> confirmed/corrected -> moved, with
+    two terminal states off the happy path: removed (the file vanished from
+    the folder without going through this flow) and error (the move failed).
+
+    confidence is a float 0-1: 1.0 when the identity came from an explicit
+    [tmdbid-NNN] tag in the filename or a human confirmation/correction,
+    otherwise the difflib similarity ratio of the TMDB fuzzy title match
+    (0.0 when no match was found at all). See crud.guess_watched_file.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    path: str = Field(unique=True, index=True)
+    filename: str
+    filesize: int
+    first_seen_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+
+    guess_media_type: Optional[str] = None  # "movie" or "tv"
+    guess_tmdb_id: Optional[int] = None
+    guess_title: Optional[str] = None
+    guess_year: Optional[int] = None
+    guess_season: Optional[int] = None
+    guess_episode: Optional[int] = None
+    confidence: float = Field(default=0.0)
+    guess_source: Optional[str] = None  # "filename" or "tmdb"
+
+    status: str = Field(default="pending")  # pending, notified, confirmed, corrected, moved, removed, error
+    notified_at: Optional[datetime] = None
+    moved_path: Optional[str] = None
+    error_message: Optional[str] = None
+
 class UploadTask(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     jellyfin_id: str
