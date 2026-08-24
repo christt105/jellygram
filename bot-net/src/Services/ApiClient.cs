@@ -362,6 +362,116 @@ public class ApiClient : IDisposable
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<WatchedFile?> ReportWatchedFileAsync(string path, string filename, long filesize)
+    {
+        var payload = new { path, filename, filesize };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files", payload);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ReportWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> RenameWatchedFileAsync(string oldPath, string newPath)
+    {
+        var payload = new { old_path = oldPath, new_path = newPath };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files/rename", payload);
+
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"RenameWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> MarkWatchedFileMissingAsync(string path)
+    {
+        var payload = new { path };
+        var response = await _httpClient.PostAsJsonAsync("/watch/files/missing", payload);
+
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"MarkWatchedFileMissing failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
+    public async Task<List<WatchedFile>?> GetWatchedFilesAsync(string? status = null)
+    {
+        var url = status is null ? "/watch" : $"/watch?status={Uri.EscapeDataString(status)}";
+        return await GetSafeAsync<List<WatchedFile>>(url);
+    }
+
+    public async Task<List<WatchedFile>?> GetPendingNotifyWatchedFilesAsync()
+    {
+        return await GetSafeAsync<List<WatchedFile>>("/watch/pending-notify");
+    }
+
+    public async Task<List<WatchedFile>?> ReidentifyWatchedFilesAsync()
+    {
+        var response = await _httpClient.PostAsync("/watch/reidentify", null);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ReidentifyWatchedFiles failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<List<WatchedFile>>(_jsonOptions);
+    }
+
+    public Task<WatchedFileResolution?> ConfirmWatchedFileAsync(int id, int tmdbId, int? season = null, int? episode = null) =>
+        ResolveWatchedFileAsync($"/watch/{id}/confirm", tmdbId, season, episode);
+
+    public Task<WatchedFileResolution?> CorrectWatchedFileAsync(int id, int tmdbId, int? season = null, int? episode = null) =>
+        ResolveWatchedFileAsync($"/watch/{id}/correct", tmdbId, season, episode);
+
+    private async Task<WatchedFileResolution?> ResolveWatchedFileAsync(string url, int tmdbId, int? season, int? episode)
+    {
+        var payload = new { tmdb_id = tmdbId, season, episode };
+        var response = await _httpClient.PostAsJsonAsync(url, payload);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"ResolveWatchedFile failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFileResolution>(_jsonOptions);
+    }
+
+    public async Task<WatchedFile?> PatchWatchedFileStatusAsync(int id, string status, string? movedPath = null, string? errorMessage = null)
+    {
+        var payload = new { status, moved_path = movedPath, error_message = errorMessage };
+        var response = await _httpClient.PatchAsync($"/watch/{id}", JsonContent.Create(payload, options: _jsonOptions));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            Log.Error($"PatchWatchedFileStatus failed: {response.StatusCode} {text}");
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WatchedFile>(_jsonOptions);
+    }
+
     public async Task<byte[]?> DownloadBackupAsync()
     {
         var response = await _httpClient.GetAsync("/maintenance/backup");

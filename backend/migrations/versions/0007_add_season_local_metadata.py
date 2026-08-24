@@ -1,7 +1,7 @@
 """add local_metadata to season
 
-Revision ID: 0005_season_local_metadata
-Revises: 0004_user_message_id
+Revision ID: 0007_season_local_metadata
+Revises: 0006_watched_file_guess_year
 Create Date: 2026-08-24
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 import sqlmodel
 
 
-revision: str = '0005_season_local_metadata'
-down_revision: Union[str, Sequence[str], None] = '0004_user_message_id'
+revision: str = '0007_season_local_metadata'
+down_revision: Union[str, Sequence[str], None] = '0006_watched_file_guess_year'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
