@@ -65,6 +65,7 @@ jobs:
           tags: |
             type=semver,pattern=v{{version}}
             type=semver,pattern=v{{major}}.{{minor}}
+            type=semver,pattern=v{{major}}
             type=ref,event=pr
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
 

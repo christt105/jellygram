@@ -45,7 +45,7 @@ The `bot-net` worker authenticates as a Telegram **bot**, which caps file transf
 
 Cinegram runs from prebuilt images on the GitHub Container Registry, so a deployment needs only two files — no clone, no build.
 
-> **Breaking change for existing deployments**: `IMPORT_MOVIES_DIR` and `IMPORT_SHOWS_DIR` no longer exist. `bot-net` now mounts a single `MEDIA_ROOT` directory (with `movies`/`shows` as subfolders of it) so moves within the library stay on one filesystem instead of silently falling back to a slow copy. In your `.env`, replace `IMPORT_MOVIES_DIR=/path/to/movies` and `IMPORT_SHOWS_DIR=/path/to/shows` with `MEDIA_ROOT=/path/to/media` plus `MOVIES_SUBDIR`/`SHOWS_SUBDIR` naming the subfolders under it (defaults `movies`/`shows`); if your movies and shows directories don't already share a parent, move one under the other on the host first.
+> **Upgrading an existing deployment?** Check [MIGRATIONS.md](./MIGRATIONS.md) for breaking changes and the steps to apply them — most recently, `IMPORT_MOVIES_DIR`/`IMPORT_SHOWS_DIR` were replaced by a single `MEDIA_ROOT` in v2.0.0.
 
 1. Create a directory and fetch the compose file and the environment template:
    ```bash
@@ -60,7 +60,7 @@ Cinegram runs from prebuilt images on the GitHub Container Registry, so a deploy
    ```
 4. Open the web panel at `http://<host>:5173`.
 
-Docker pulls the `web`, `backend`, and `bot-net` images from `ghcr.io/christt105/cinegram-*`. To update later, run `docker compose pull && docker compose up -d`. Pin a specific release by setting `CINEGRAM_TAG=v1.2.0` in `.env` (defaults to `latest`).
+Docker pulls the `web`, `backend`, and `bot-net` images from `ghcr.io/christt105/cinegram-*`. To update later, run `docker compose pull && docker compose up -d`. Pin an exact release by setting `CINEGRAM_TAG=v1.2.0` in `.env`, or pin to a major line (e.g. `CINEGRAM_TAG=v1`) to get patch/minor updates automatically while staying clear of breaking changes across major versions — see [MIGRATIONS.md](./MIGRATIONS.md) before crossing one. Defaults to `latest`.
 
 ### Build from source
 
@@ -97,7 +97,7 @@ All configuration lives in `.env` (see `.env.example` for the template).
 | `WEB_PORT`              | Host port for the web panel (defaults `5173`). Change it if the port is already in use.          |
 | `BACKEND_PORT`          | Host port for the backend API (defaults `8005`). The web container reads it at start.           |
 | `BOT_NET_PORT`          | Host port for the `bot-net` worker (defaults `8088`). The web container reads it at start.       |
-| `CINEGRAM_TAG`          | Image tag to deploy (defaults `latest`; pin to a release like `v1.2.0`, or to `pr-18` to try a pull request). |
+| `CINEGRAM_TAG`          | Image tag to deploy (defaults `latest`; pin to an exact release like `v1.2.0`, to a major line like `v1` to auto-track its patches/minors, or to `pr-18` to try a pull request). |
 
 ## Path mapping
 
