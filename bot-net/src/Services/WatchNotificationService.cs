@@ -119,22 +119,23 @@ public class WatchNotificationService
     }
 
     /// <summary>
-    /// A row a Telegram tap just confirmed/corrected goes through WatchedFileMoveFlow.ExecuteAsync
-    /// straight away and is still tracked in the registry until that finishes — skipping rows
-    /// still tracked there keeps this poller from racing that in-flight move for the same row.
-    /// Rows that never had a live message (actioned from the web) are never tracked at all.
+    /// A row confirmed/corrected from the web is moved here, whether or not a notify message for
+    /// it ever went out: the same row can perfectly well have been announced on Telegram first and
+    /// actioned on the web afterwards, and its still-live message is then edited with the outcome
+    /// so it doesn't keep offering buttons for a file that is no longer in the downloads folder.
+    /// Not racing the move a Telegram tap starts for that same row is <see cref="WatchedFileMoveClaims"/>'s
+    /// job, inside the move flow itself — whichever path claims the row first is the one that moves
+    /// it and the one that reports the outcome. The message is untracked only once there is an
+    /// outcome to show it, so a move that blows up mid-way leaves the row listed for the next cycle
+    /// to retry, message reference and all.
     /// </summary>
     private async Task ProcessWebResolvedAsync(string status)
     {
         var rows = await _apiClient.GetWatchedFilesAsync(status);
         if (rows is null || rows.Count == 0) return;
 
-        var live = _registry.Snapshot();
-
         foreach (var row in rows)
         {
-            if (live.ContainsKey(row.Id)) continue;
-
             var resolution = WatchedFileResolution.FromWatchedFile(row);
             if (resolution is null)
             {
@@ -144,7 +145,18 @@ public class WatchNotificationService
 
             Log.Info($"[WatchNotification] Picking up {row.Filename} (row {row.Id}, {status} from the web).");
             var outcome = await WatchedFileMoveFlow.MoveAndReportAsync(_apiClient, row.Id, resolution);
-            Log.Info($"[WatchNotification] {row.Filename} (row {row.Id}): {outcome.Text}");
+            if (outcome is null)
+            {
+                Log.Info($"[WatchNotification] {row.Filename} (row {row.Id}) is already being moved, leaving it.");
+                continue;
+            }
+
+            Log.Info($"[WatchNotification] {row.Filename} (row {row.Id}): {outcome.Value.Text}");
+
+            if (_registry.TryUntrack(row.Id, out var reference))
+            {
+                await _bot.EditMessageText(reference.ChatId, reference.MessageId, outcome.Value.Text);
+            }
         }
     }
 }
