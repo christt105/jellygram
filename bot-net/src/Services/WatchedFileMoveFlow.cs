@@ -24,8 +24,12 @@ public static class WatchedFileMoveFlow
             MediaLibrary.MoviesDir, MediaLibrary.ShowsDir, mediaType, title, tmdbId, year, season, episode,
             Path.GetExtension(filename));
 
+    /// <summary>
     /// Backend-reporting part, with no Telegram message to edit — reused by the web poller.
-    public static async Task<MoveOutcome> MoveAndReportAsync(
+    /// Null when another caller is already moving this row (see <see cref="WatchedFileMoveClaims"/>);
+    /// that caller reports the outcome, so this one has nothing to say about it.
+    /// </summary>
+    public static async Task<MoveOutcome?> MoveAndReportAsync(
         ApiClient apiClient, int watchedFileId, WatchedFileResolution? resolution)
     {
         if (resolution is null)
@@ -34,40 +38,49 @@ public static class WatchedFileMoveFlow
                 "❌ Could not resolve the identity for this file (TMDB lookup or backend request failed).");
         }
 
-        var sourcePath = WatchedFileReconciliation.ToFullPath(MediaLibrary.DownloadsDir, resolution.Path);
+        if (!WatchedFileMoveClaims.TryClaim(watchedFileId)) return null;
 
-        if (!System.IO.File.Exists(sourcePath))
-        {
-            await apiClient.MarkWatchedFileMissingAsync(resolution.Path);
-            return new MoveOutcome(false, WatchedFileMessages.BuildMissingText(resolution.Filename));
-        }
-
-        var destPath = BuildProspectiveDestination(
-            resolution.MediaType, resolution.Title, resolution.TmdbId, resolution.Year, resolution.Season,
-            resolution.Episode, resolution.Filename);
-        destPath = MediaNaming.ResolveFreePath(destPath, null);
-
-        // The move itself makes the source disappear from the downloads folder, which the
-        // FileSystemWatcher sees as a Deleted event indistinguishable from a real deletion by
-        // hand. Marking the path in-flight lets it recognize and ignore that expected event
-        // instead of racing the "moved" patch below with a spurious "removed" one.
-        InFlightWatchedFileMoves.Mark(resolution.Path);
         try
         {
-            var (ok, error) = await SafeFileMover.MoveAsync(sourcePath, destPath);
+            var sourcePath = WatchedFileReconciliation.ToFullPath(MediaLibrary.DownloadsDir, resolution.Path);
 
-            if (ok)
+            if (!System.IO.File.Exists(sourcePath))
             {
-                await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "moved", movedPath: destPath);
-                return new MoveOutcome(true, WatchedFileMessages.BuildMovedText(resolution.Filename, destPath));
+                await apiClient.MarkWatchedFileMissingAsync(resolution.Path);
+                return new MoveOutcome(false, WatchedFileMessages.BuildMissingText(resolution.Filename));
             }
 
-            await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "error", errorMessage: error);
-            return new MoveOutcome(false, WatchedFileMessages.BuildErrorText(resolution.Filename, error));
+            var destPath = BuildProspectiveDestination(
+                resolution.MediaType, resolution.Title, resolution.TmdbId, resolution.Year, resolution.Season,
+                resolution.Episode, resolution.Filename);
+            destPath = MediaNaming.ResolveFreePath(destPath, null);
+
+            // The move itself makes the source disappear from the downloads folder, which the
+            // FileSystemWatcher sees as a Deleted event indistinguishable from a real deletion by
+            // hand. Marking the path in-flight lets it recognize and ignore that expected event
+            // instead of racing the "moved" patch below with a spurious "removed" one.
+            InFlightWatchedFileMoves.Mark(resolution.Path);
+            try
+            {
+                var (ok, error) = await SafeFileMover.MoveAsync(sourcePath, destPath);
+
+                if (ok)
+                {
+                    await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "moved", movedPath: destPath);
+                    return new MoveOutcome(true, WatchedFileMessages.BuildMovedText(resolution.Filename, destPath));
+                }
+
+                await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "error", errorMessage: error);
+                return new MoveOutcome(false, WatchedFileMessages.BuildErrorText(resolution.Filename, error));
+            }
+            finally
+            {
+                InFlightWatchedFileMoves.Unmark(resolution.Path);
+            }
         }
         finally
         {
-            InFlightWatchedFileMoves.Unmark(resolution.Path);
+            WatchedFileMoveClaims.Release(watchedFileId);
         }
     }
 
@@ -78,6 +91,8 @@ public static class WatchedFileMoveFlow
         registry.TryUntrack(watchedFileId, out _);
 
         var outcome = await MoveAndReportAsync(apiClient, watchedFileId, resolution);
-        await bot.EditMessageText(message.Chat.Id, message.MessageId, outcome.Text);
+        if (outcome is null) return;
+
+        await bot.EditMessageText(message.Chat.Id, message.MessageId, outcome.Value.Text);
     }
 }
