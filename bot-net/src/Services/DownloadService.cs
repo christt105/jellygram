@@ -263,6 +263,15 @@ public class DownloadService
                 Log.Error($"[Downloader] Failed to set permissions for {fullPath}", ex);
             }
 
+            if (task.MediaType == "tv" && task.LocalMetadata)
+            {
+                var seasonNumber = task.SeasonNumber ?? 1;
+                var seriesRootDir = Path.GetDirectoryName(finalDir)!;
+                NfoWriter.WriteTvShowNfo(seriesRootDir, task.Title, task.Overview);
+                NfoWriter.WriteSeasonNfo(finalDir, seasonNumber);
+                NfoWriter.WriteEpisodeNfo(fullPath, seasonNumber, task.EpisodeNumber ?? 0, task.EpisodeTitle);
+            }
+
             // 6. Read technical metadata from the file we just landed
             await StoreTechnicalMetadata(task.CollectionId, fullPath);
 

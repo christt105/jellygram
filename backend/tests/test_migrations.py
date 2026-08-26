@@ -110,6 +110,26 @@ def test_user_message_id_adopts_existing_files_without_losing_data(tmp_path):
         assert filename == "Mugen Train.mkv"
 
 
+def test_season_local_metadata_defaults_to_false_for_existing_seasons(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'stored.db'}")
+    with engine.begin() as connection:
+        upgrade_to(connection, "0004_user_message_id")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO series (id, manual_title, manually_added, created_at)"
+            " VALUES (1, 'Bleach', 0, '2026-07-29 00:00:00')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO season (id, series_id, season_number) VALUES (1, 1, 3)"
+        )
+
+    with engine.begin() as connection:
+        upgrade_to(connection, "head")
+
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("select local_metadata from season").scalar() == 0
+
+
 def test_watched_file_table_lands_on_a_database_with_existing_data(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'stored.db'}")
     build_database_with_a_file(engine, "0004_user_message_id")

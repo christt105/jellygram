@@ -2,8 +2,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from database import get_session
-from models import Series, Collection
-from schemas import SeriesOut, SeriesUpdate
+from models import Series, Season, Episode, Collection
+from schemas import SeriesOut, SeriesUpdate, SeasonUpdate, EpisodeUpdate
 from crud import prune_orphaned_media, get_or_create_season, get_or_create_episode, propagate_identification
 from tmdb import TMDB
 import tmdbsimple as tmdb_simple
@@ -59,6 +59,46 @@ def update_series(series_id: int, request: SeriesUpdate, session: Session = Depe
     session.commit()
     session.refresh(series)
     return series
+
+@router.patch("/{series_id}/seasons/{season_number}")
+def update_season(series_id: int, season_number: int, request: SeasonUpdate, session: Session = Depends(get_session)):
+    season = session.exec(
+        select(Season).where(Season.series_id == series_id).where(Season.season_number == season_number)
+    ).first()
+    if not season:
+        raise HTTPException(status_code=404, detail="Season not found")
+
+    update_data = request.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(season, key, value)
+
+    session.add(season)
+    session.commit()
+    session.refresh(season)
+    return season
+
+@router.patch("/{series_id}/seasons/{season_number}/episodes/{episode_number}")
+def update_episode(series_id: int, season_number: int, episode_number: int, request: EpisodeUpdate, session: Session = Depends(get_session)):
+    season = session.exec(
+        select(Season).where(Season.series_id == series_id).where(Season.season_number == season_number)
+    ).first()
+    if not season:
+        raise HTTPException(status_code=404, detail="Season not found")
+
+    episode = session.exec(
+        select(Episode).where(Episode.season_id == season.id).where(Episode.episode_number == episode_number)
+    ).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    update_data = request.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(episode, key, value)
+
+    session.add(episode)
+    session.commit()
+    session.refresh(episode)
+    return episode
 
 @router.get("/{series_id}/posters")
 def get_series_posters(series_id: int, session: Session = Depends(get_session)):

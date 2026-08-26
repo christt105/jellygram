@@ -156,37 +156,46 @@ def list_pending_downloads(session: Session = Depends(get_session)):
         episode_num = None
         tmdb_id = None
         tvdb_id = None
+        overview = None
+        episode_title = None
+        local_metadata = False
         if coll.movie_id:
             movie = session.get(Movie, coll.movie_id)
             if movie:
                 title = movie.title
                 year = movie.release_year
                 tmdb_id = movie.tmdb_id
+                overview = movie.overview
         elif coll.episode_id:
             episode = session.get(Episode, coll.episode_id)
             if episode:
                 media_type = "tv"
                 episode_num = episode.episode_number
+                episode_title = episode.title
                 season = session.get(Season, episode.season_id)
                 if season:
                     season_num = season.season_number
+                    local_metadata = season.local_metadata
                     series = session.get(Series, season.series_id)
                     if series:
                         title = series.manual_title
                         year = series.release_year
                         tmdb_id = series.tmdb_id
                         tvdb_id = series.tvdb_id
+                        overview = series.overview
         elif coll.season_id:
             season = session.get(Season, coll.season_id)
             if season:
                 media_type = "tv"
                 season_num = season.season_number
+                local_metadata = season.local_metadata
                 series = session.get(Series, season.series_id)
                 if series:
                     title = series.manual_title
                     year = series.release_year
                     tmdb_id = series.tmdb_id
                     tvdb_id = series.tvdb_id
+                    overview = series.overview
         result.append({
             "task_id": t.id,
             "collection_id": t.collection_id,
@@ -199,6 +208,9 @@ def list_pending_downloads(session: Session = Depends(get_session)):
             "name_suffix": t.name_suffix,
             "tmdb_id": tmdb_id,
             "tvdb_id": tvdb_id,
+            "overview": overview,
+            "episode_title": episode_title,
+            "local_metadata": local_metadata,
             "files": [
                 {
                     "id": f.id,
