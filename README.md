@@ -9,8 +9,10 @@ It ships as three services orchestrated with Docker Compose, so a full deploymen
 ## Key Features
 
 - **Bidirectional Media Transfer**: Download files from Telegram directly into your Jellyfin library, or back up existing Jellyfin media to Telegram.
+- **Downloads Folder Import**: Watches the folder your torrent/eD2k client writes to, identifies each finished file against TMDB and — once you confirm the guess from Telegram or the web — renames and moves it into the library. See [Importing from the downloads folder](#importing-from-the-downloads-folder).
 - **Automatic Large File Handling**: Circumvents Telegram's 2 GB bot upload limit by splitting larger files into 1.95 GB multi-part archives using store-only `7z` compression, rejoining them automatically on download.
 - **Metadata & Naming Standardization**: Integrates with TMDB to fetch metadata, posters, and standardize filenames/folder structures for Jellyfin.
+- **Local Metadata for Non-Official Content**: Flag a season whose numbering doesn't match any online provider and Cinegram writes `.nfo` sidecars next to the files, so Jellyfin reads titles and plots from disk instead of reconciling them against an unrelated online entry. See [Local metadata](#local-metadata-for-non-official-content).
 - **Multi-User Access Control**: Restricts bot commands and storage privileges to authorized Telegram user IDs.
 - **Web UI & Bot Interface**: Manage imports, search your library, and monitor transfer queues via the Vue web dashboard or Telegram chat.
 
@@ -113,6 +115,25 @@ JELLYFIN_PATH_MAP=/media/library/movies:/data/media/movies,/media/library/shows:
 
 Each entry is `path_as_jellyfin_reports_it:path_inside_bot-net`, and the right-hand side is one of `bot-net`'s two library subdirectories. Entries are tried in order, before falling back to `MEDIA_ROOT`/`MOVIES_SUBDIR`/`SHOWS_SUBDIR`. To find the left-hand side, look at any item's path in Jellyfin (Administration → the item → the file path), or read it off the `Translated path:` line in `docker compose logs bot-net` after a failed upload.
 
+## Importing from the downloads folder
+
+`bot-net` watches `MEDIA_ROOT/${DOWNLOADS_SUBDIR}` recursively — point your torrent or eD2k client's completed folder there — and imports what lands in it without you having to name anything by hand:
+
+1. **Detection.** A new video file is only picked up once its size has stopped growing, so a download still in flight isn't imported half-written. Renames and deletions are followed too, including a client that renames a whole folder on completion.
+2. **Identification.** The backend parses the filename and looks it up on TMDB, producing a guess: media type, title, year, and season/episode for a series, each with a confidence.
+3. **Confirmation.** The bot sends you a Telegram message with the guess and two buttons, **Confirm** and **Correct**. The same file also shows up in the web panel's Downloads section, which additionally does batch actions over several files at once. Correcting means giving the right TMDB id (and season/episode), from either interface.
+4. **Move.** On confirmation the file is renamed to Jellyfin's convention and moved into the movies or shows subdirectory. Because the library and the downloads folder are subfolders of the same `MEDIA_ROOT` bind mount, this is a rename on one filesystem rather than a copy.
+
+If the guesses are wrong across the board — TMDB was unreachable when the files were detected, say — `/reidentify` re-runs the identification for every file still unresolved.
+
+A file removed from disk before you action it is marked as such instead of leaving a dead button behind, and one that was already moved is never re-imported.
+
+## Local metadata for non-official content
+
+Some series are numbered in a way no online provider recognises: fan edits, re-cuts, compilations, anything whose episode order doesn't match TheTVDB or TMDB. Jellyfin would keep trying to reconcile those files against an unrelated online entry and mislabel them.
+
+Mark such a season as **Local metadata (non-official)** in the web panel (series detail → the season's checkbox) and Cinegram stops relying on the online entry for it: as each episode is downloaded from Telegram, it writes Kodi/Jellyfin-compatible `.nfo` sidecars — `tvshow.nfo` at the series root, `season.nfo` in the season folder, and one `.nfo` per episode file. Episode titles become editable per episode in that same view, and what you type is what ends up in the sidecar and, therefore, in Jellyfin.
+
 ## Service ports
 
 | Service   | Host port               | Container port |
@@ -145,7 +166,10 @@ Once the containers are up, control the worker from Telegram (as the user in `TE
 | `/serie <series-id>`       | Show a series' details.                                      |
 | `/orphans`                 | List collections still missing TMDB identification.         |
 | `/queue`                   | Show active upload and download transfers.                  |
+| `/reidentify`              | Re-run TMDB identification for every unresolved watched file. |
 | `/auth`                    | Show whether a Telegram user account session is active.     |
+| `/backup`                  | Send a backup of the database.                              |
+| `/version`                 | Show the bot version.                                       |
 
 ## Telegram user account (optional)
 
