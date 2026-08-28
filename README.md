@@ -9,7 +9,7 @@ It ships as three services orchestrated with Docker Compose, so a full deploymen
 ## Key Features
 
 - **Bidirectional Media Transfer**: Download files from Telegram directly into your Jellyfin library, or back up existing Jellyfin media to Telegram.
-- **Downloads Folder Import**: Watches the folder your torrent/eD2k client writes to, identifies each finished file against TMDB and — once you confirm the guess from Telegram or the web — renames and moves it into the library. See [Importing from the downloads folder](#importing-from-the-downloads-folder).
+- **Downloads Folder Import**: Watches a folder for new video files, identifies each one against TMDB and — once you confirm the guess from Telegram or the web — renames and moves it into the library. See [Importing from the downloads folder](#importing-from-the-downloads-folder).
 - **Automatic Large File Handling**: Circumvents Telegram's 2 GB bot upload limit by splitting larger files into 1.95 GB multi-part archives using store-only `7z` compression, rejoining them automatically on download.
 - **Metadata & Naming Standardization**: Integrates with TMDB to fetch metadata, posters, and standardize filenames/folder structures for Jellyfin.
 - **Local Metadata for Non-Official Content**: Flag a season whose numbering doesn't match any online provider and Cinegram writes `.nfo` sidecars next to the files, so Jellyfin reads titles and plots from disk instead of reconciling them against an unrelated online entry. See [Local metadata](#local-metadata-for-non-official-content).
@@ -117,9 +117,9 @@ Each entry is `path_as_jellyfin_reports_it:path_inside_bot-net`, and the right-h
 
 ## Importing from the downloads folder
 
-`bot-net` watches `MEDIA_ROOT/${DOWNLOADS_SUBDIR}` recursively — point your torrent or eD2k client's completed folder there — and imports what lands in it without you having to name anything by hand:
+`bot-net` watches `MEDIA_ROOT/${DOWNLOADS_SUBDIR}` recursively and imports whatever video files appear in it, without you having to name anything by hand:
 
-1. **Detection.** A new video file is only picked up once its size has stopped growing, so a download still in flight isn't imported half-written. Renames and deletions are followed too, including a client that renames a whole folder on completion.
+1. **Detection.** A new video file is only picked up once its size has stopped growing, so a file still being written isn't imported half-finished. Renames and deletions are followed too, including a whole folder renamed at once.
 2. **Identification.** The backend parses the filename and looks it up on TMDB, producing a guess: media type, title, year, and season/episode for a series, each with a confidence.
 3. **Confirmation.** The bot sends you a Telegram message with the guess and two buttons, **Confirm** and **Correct**. The same file also shows up in the web panel's Downloads section, which additionally does batch actions over several files at once. Correcting means giving the right TMDB id (and season/episode), from either interface.
 4. **Move.** On confirmation the file is renamed to Jellyfin's convention and moved into the movies or shows subdirectory. Because the library and the downloads folder are subfolders of the same `MEDIA_ROOT` bind mount, this is a rename on one filesystem rather than a copy.
