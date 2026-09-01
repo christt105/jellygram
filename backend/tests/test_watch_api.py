@@ -29,6 +29,20 @@ class StubTMDB:
         return {}
 
 
+class StubTmdbSimpleTV:
+    def __init__(self, tmdb_id):
+        self.tmdb_id = tmdb_id
+
+    def external_ids(self):
+        if self.tmdb_id == 42:
+            return {"tvdb_id": 9999}
+        return {}
+
+
+class StubTmdbSimple:
+    TV = StubTmdbSimpleTV
+
+
 @pytest.fixture(name="client")
 def client_fixture(monkeypatch):
     import models
@@ -45,6 +59,7 @@ def client_fixture(monkeypatch):
             yield session
 
     monkeypatch.setattr(watch_module, "tmdb", StubTMDB())
+    monkeypatch.setattr(watch_module, "tmdb_simple", StubTmdbSimple())
     app.dependency_overrides[get_session] = get_session_override
     with TestClient(app) as client:
         yield client
@@ -158,6 +173,21 @@ def test_confirm_returns_final_identity_and_updates_status(client):
     assert data["year"] == 2020
 
 
+def test_confirm_of_a_show_also_resolves_its_tvdb_id(client):
+    """Regression test: a show confirmed through /watch used to be written to disk with only
+    a [tmdbid-x] folder tag, which Jellyfin's TV metadata providers don't always honor, causing
+    it to fall back to a title search and match the wrong show. Fetching the TVDB id here lets
+    the folder carry a [tvdbid-x] tag instead, same as the regular (non-/watch) download flow."""
+    created = report(client, "downloads/confirm-tvdb.mkv", filename="Confirm.Tvdb.mkv")
+    res = client.post(f"/watch/{created['id']}/confirm", json={"tmdb_id": 42})
+    assert res.status_code == 200, res.text
+    assert res.json()["tvdb_id"] == 9999
+
+    listed = client.get("/watch", params={"status": "confirmed"}).json()
+    row = next(f for f in listed if f["id"] == created["id"])
+    assert row["guess_tvdb_id"] == 9999
+
+
 def test_correct_overrides_tmdb_id_and_season_episode(client):
     created = report(client, "downloads/correct-me.mkv", filename="Correct.Me.mkv")
     res = client.post(f"/watch/{created['id']}/correct", json={"tmdb_id": 100, "season": 2, "episode": 5})
@@ -169,6 +199,7 @@ def test_correct_overrides_tmdb_id_and_season_episode(client):
     assert data["year"] == 2019
     assert data["season"] == 2
     assert data["episode"] == 5
+    assert data["tvdb_id"] is None
 
 
 def test_confirm_with_unknown_tmdb_id_is_a_404(client):

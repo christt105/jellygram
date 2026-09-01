@@ -5,11 +5,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
+import tmdbsimple as tmdb_simple
 
 from database import get_session
 from models import WatchedFile
 from tmdb import TMDB
 from crud import guess_watched_file
+from logger import logger
 
 router = APIRouter(prefix="/watch", tags=["watch"])
 tmdb = TMDB()
@@ -161,10 +163,19 @@ def _resolve(row: WatchedFile, payload: WatchedFileResolveIn) -> dict:
     release_date = tmdb_result.get("release_date") if media_type == "movie" else tmdb_result.get("first_air_date")
     year = int(release_date[:4]) if release_date else None
 
+    tvdb_id = None
+    if media_type == "tv":
+        try:
+            external_ids = tmdb_simple.TV(payload.tmdb_id).external_ids()
+            tvdb_id = external_ids.get("tvdb_id")
+        except Exception as e:
+            logger.error(f"Error fetching TVDB ID for tmdb_id={payload.tmdb_id}: {e}")
+
     row.guess_tmdb_id = payload.tmdb_id
     row.guess_media_type = media_type
     row.guess_title = title
     row.guess_year = year
+    row.guess_tvdb_id = tvdb_id
     if payload.season is not None:
         row.guess_season = payload.season
     if payload.episode is not None:
@@ -177,6 +188,7 @@ def _resolve(row: WatchedFile, payload: WatchedFileResolveIn) -> dict:
         "path": row.path,
         "filename": row.filename,
         "tmdb_id": row.guess_tmdb_id,
+        "tvdb_id": row.guess_tvdb_id,
         "media_type": row.guess_media_type,
         "title": row.guess_title,
         "year": row.guess_year,
