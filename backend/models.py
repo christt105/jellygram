@@ -146,6 +146,7 @@ class WatchedFile(SQLModel, table=True):
 
     guess_media_type: Optional[str] = None  # "movie" or "tv"
     guess_tmdb_id: Optional[int] = None
+    guess_tvdb_id: Optional[int] = None
     guess_title: Optional[str] = None
     guess_year: Optional[int] = None
     guess_season: Optional[int] = None

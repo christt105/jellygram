@@ -11,6 +11,7 @@ public class WatchedFileResolution
     [JsonPropertyName("path")] public string Path { get; set; } = "";
     [JsonPropertyName("filename")] public string Filename { get; set; } = "";
     [JsonPropertyName("tmdb_id")] public int TmdbId { get; set; }
+    [JsonPropertyName("tvdb_id")] public int? TvdbId { get; set; }
     [JsonPropertyName("media_type")] public string MediaType { get; set; } = "";
     [JsonPropertyName("title")] public string Title { get; set; } = "";
     [JsonPropertyName("year")] public int? Year { get; set; }
@@ -33,6 +34,7 @@ public class WatchedFileResolution
             Path = row.Path,
             Filename = row.Filename,
             TmdbId = row.GuessTmdbId.Value,
+            TvdbId = row.GuessTvdbId,
             MediaType = row.GuessMediaType,
             Title = row.GuessTitle,
             Year = row.GuessYear,
