@@ -806,7 +806,7 @@ const openDownloadModal = (col: any) => {
     open: true,
     collectionId: col.id,
     label: col.name || col.quality || 'Collection #' + col.id,
-    suffix: '',
+    suffix: col.notes || '',
     loading: false
   }
 }
