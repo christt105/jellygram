@@ -61,6 +61,20 @@ app.MapPost("/probe/collection/{collectionId:int}", async (int collectionId, Pro
     return ok ? Results.Ok(new { status = "ok" }) : Results.Problem(error);
 });
 
+// Look up document_id and forward origin for historical messages, for the backend's backfill script
+app.MapPost("/messages/forward-origin", async (int[] messageIds, IServiceProvider sp) =>
+{
+    var forwardOrigin = ActivatorUtilities.CreateInstance<ForwardOriginService>(sp);
+    try
+    {
+        return Results.Ok(await forwardOrigin.LookupAsync(messageIds));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: 503);
+    }
+});
+
 // Delete a collection's downloaded file, keeping the collection itself
 app.MapDelete("/local/collection/{collectionId:int}", async (int collectionId, IServiceProvider sp) =>
 {

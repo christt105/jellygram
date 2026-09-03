@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Telegram.Bot.Types;
 using TL;
 
@@ -10,9 +11,16 @@ public static class ForwardMetadata
     /// message and any forward of it. from_type is one of Telegram's own forward-origin
     /// categories ("user", "hidden_user", "chat", "channel"), or null when the message wasn't
     /// forwarded at all. hidden is true only when the original sender's identity was hidden by
-    /// their privacy settings, in which case from_id is always null.
+    /// their privacy settings, in which case from_id is always null. Property names match the
+    /// backend's snake_case field names, since this also serves as the /messages/forward-origin
+    /// response shape consumed by backend/scripts/backfill_forward_origin.py.
     /// </summary>
-    public record Info(long? DocumentId, string? FromType, string? FromId, string? FromName, bool Hidden);
+    public record Info(
+        [property: JsonPropertyName("document_id")] long? DocumentId,
+        [property: JsonPropertyName("fwd_from_type")] string? FromType,
+        [property: JsonPropertyName("fwd_from_id")] string? FromId,
+        [property: JsonPropertyName("fwd_from_name")] string? FromName,
+        [property: JsonPropertyName("fwd_from_hidden")] bool Hidden);
 
     public static Info Extract(MessageOrigin? forwardOrigin, MessageBase? tlMessage)
     {
