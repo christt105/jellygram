@@ -31,7 +31,8 @@ public static class WatchedFileMoveFlow
     /// that caller reports the outcome, so this one has nothing to say about it.
     /// </summary>
     public static async Task<MoveOutcome?> MoveAndReportAsync(
-        ApiClient apiClient, int watchedFileId, WatchedFileResolution? resolution)
+        ApiClient apiClient, int watchedFileId, WatchedFileResolution? resolution,
+        JellyfinSeriesIdentifier? jellyfin = null)
     {
         if (resolution is null)
         {
@@ -68,6 +69,7 @@ public static class WatchedFileMoveFlow
                 if (ok)
                 {
                     await apiClient.PatchWatchedFileStatusAsync(watchedFileId, "moved", movedPath: destPath);
+                    QueueJellyfinIdentification(jellyfin, resolution, destPath);
                     return new MoveOutcome(true, WatchedFileMessages.BuildMovedText(resolution.Filename, destPath));
                 }
 
@@ -85,13 +87,42 @@ public static class WatchedFileMoveFlow
         }
     }
 
+    /// <summary>
+    /// The show folder of an episode destination, two levels up from the file itself
+    /// ("Show [tvdbid-x]/Season 01/Show - S01E01.mkv"). That folder is what Jellyfin turns into
+    /// the Series item, so it is what an identification has to be matched against.
+    /// </summary>
+    public static string? SeriesFolderOf(string destPath)
+    {
+        var seasonDir = Path.GetDirectoryName(destPath);
+        var seriesFolder = seasonDir is null ? null : Path.GetDirectoryName(seasonDir);
+
+        return string.IsNullOrEmpty(seriesFolder) ? null : seriesFolder;
+    }
+
+    /// <summary>
+    /// Movies are left out on purpose: TMDB is Jellyfin's primary provider for them and folder
+    /// ids have not misidentified one, while series go through TheTVDB first.
+    /// </summary>
+    private static void QueueJellyfinIdentification(
+        JellyfinSeriesIdentifier? jellyfin, WatchedFileResolution resolution, string destPath)
+    {
+        if (jellyfin is null || resolution.MediaType != "tv") return;
+
+        var seriesFolder = SeriesFolderOf(destPath);
+        if (seriesFolder is null) return;
+
+        jellyfin.QueueIdentification(seriesFolder, resolution.TmdbId, resolution.Title);
+    }
+
     public static async Task ExecuteAsync(
         WTelegram.Bot bot, ApiClient apiClient, WatchedFileMessageRegistry registry,
-        Message message, int watchedFileId, WatchedFileResolution? resolution)
+        Message message, int watchedFileId, WatchedFileResolution? resolution,
+        JellyfinSeriesIdentifier? jellyfin = null)
     {
         registry.TryUntrack(watchedFileId, out _);
 
-        var outcome = await MoveAndReportAsync(apiClient, watchedFileId, resolution);
+        var outcome = await MoveAndReportAsync(apiClient, watchedFileId, resolution, jellyfin);
         if (outcome is null) return;
 
         await bot.EditMessageText(message.Chat.Id, message.MessageId, outcome.Value.Text);

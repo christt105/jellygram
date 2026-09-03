@@ -18,12 +18,18 @@ public class BotDispatcher
     private readonly MessageHandler _messageHandler;
     private readonly PendingActionHandler _pendingActionHandler;
 
-    public BotDispatcher(WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null)
+    public BotDispatcher(
+        WTelegram.Bot bot, ApiClient apiClient, TaskQueue queue, UserClientService? userClient = null,
+        IJellyfinClient? jellyfinClient = null)
     {
         Bot = bot;
         ApiClient = apiClient;
         Queue = queue;
         UserClient = userClient;
+
+        JellyfinSeries = new JellyfinSeriesIdentifier(
+            jellyfinClient,
+            async text => await Bot.SendMessage(AuthConfig.OwnerUserId, text, ParseMode.Html));
 
         _pendingActionHandler = new PendingActionHandler(Bot);
         _commandHandler = new CommandHandler(this);
@@ -46,6 +52,10 @@ public class BotDispatcher
     /// <summary>Shared with <see cref="WatchNotificationService"/> so the Confirm/Correct
     /// callbacks and the removed-file reconciliation sweep track the same live messages.</summary>
     public WatchedFileMessageRegistry WatchedFileMessages { get; } = new();
+
+    /// <summary>Shared with <see cref="WatchNotificationService"/> so a series confirmed from
+    /// Telegram and one confirmed from the web both get their TMDB id pushed to Jellyfin.</summary>
+    public JellyfinSeriesIdentifier JellyfinSeries { get; }
 
     public PendingActionHandler PendingActionHandler => _pendingActionHandler;
 
