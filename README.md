@@ -150,6 +150,15 @@ The `web` service is a static bundle served by nginx, with the runtime config wr
 
 Cinegram has **no built-in authentication** on the web panel or the backend API: anyone who can reach those ports can browse and modify the library. Only the Telegram bot is access-controlled (via `TELEGRAM_AUTH_USER_ID`). Do **not** expose the `web` or `backend` ports directly to the internet. Keep them on your LAN and reach them through a VPN, or put them behind a reverse proxy that adds authentication and TLS.
 
+## Forwarding does not copy the file
+
+Most files end up in Cinegram by being forwarded to the bot from another chat, group, or channel, rather than uploaded fresh. Telegram forwarding does not copy the underlying blob: it only points a new message at the same one the original sender uploaded. Two consequences follow from that:
+
+- **You don't own most of what you "have".** A forwarded file stays tied to whoever originally uploaded it. Telegram's copyright policy can act on public groups and channels, and it is not documented (or safe to assume) what happens to a private pointer when the blob it points to is purged at that level. Re-uploading a file through Cinegram is the only way to make it independent, since that creates a genuinely new blob.
+- **Hiding the sender when forwarding makes this worse, not better.** It does not change how the file is stored, it only deletes the one piece of information (`fwd_from`) that would tell you what the file depends on. Forward normally.
+
+Every `file` row stores `document_id` (Telegram's identifier for the underlying blob, identical across every forward of it) and, when the upload was a forward, `fwd_from_type` / `fwd_from_id` / `fwd_from_name` / `fwd_from_hidden` (who it came from). These are populated automatically for new uploads. Existing rows from before this was tracked stay empty until backfilled with `backend/scripts/backfill_forward_origin.py`, which re-fetches each historical message from Telegram to fill both columns in; `backend/scripts/forward_origin_report.py` then summarizes exposure by source, so you can see how much of your archive depends on channels or chats you don't control.
+
 ## Bot commands
 
 Once the containers are up, control the worker from Telegram (as the user in `TELEGRAM_AUTH_USER_ID`):

@@ -102,6 +102,17 @@ class Collection(SQLModel, table=True):
     files: List["File"] = Relationship(back_populates="collection")
 
 class File(SQLModel, table=True):
+    """A row per physical upload registered with Cinegram.
+
+    Most files here are not blobs owned by this deployment: forwarding a
+    Telegram message does not copy its underlying blob, it only points at
+    the same one. document_id and the fwd_from_* fields record which blob
+    (Telegram's own identifier, stable across forwards) and which original
+    chat/channel a file actually depends on, so a purge of that source can
+    be traced back to the files it would break. Both are populated for new
+    uploads going forward; existing rows stay NULL until backfilled, see
+    backend/scripts/backfill_forward_origin.py.
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
     message_id: int
     # The same message as seen by the user account, which numbers private chats on its own.
@@ -112,6 +123,19 @@ class File(SQLModel, table=True):
     mime_type: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     storage_peer: str = Field(default="bot")
+
+    # Telegram's internal document identifier for the underlying blob. Identical
+    # between a message and any forward of it, unlike message_id/user_message_id.
+    document_id: Optional[int] = Field(default=None, index=True)
+    # Origin of the message this file came from, when it was a forward.
+    # fwd_from_type: "user", "hidden_user", "chat" or "channel" (Telegram's own
+    # forward-origin categories); None when the file wasn't forwarded at all.
+    fwd_from_type: Optional[str] = None
+    fwd_from_id: Optional[str] = None
+    fwd_from_name: Optional[str] = None
+    # True when the original sender's identity was hidden by their privacy
+    # settings (fwd_from_id is always None in that case).
+    fwd_from_hidden: bool = Field(default=False)
 
     collection_id: int = Field(foreign_key="collection.id")
     collection: "Collection" = Relationship(back_populates="files")

@@ -21,4 +21,14 @@ public class UploadFile
     [JsonPropertyName("technical_metadata")] public string? TechnicalMetadata { get; set; }
 
     [JsonPropertyName("storage_peer")] public string StoragePeer { get; set; } = "bot";
+
+    [JsonPropertyName("document_id")] public long? DocumentId { get; set; }
+
+    [JsonPropertyName("fwd_from_type")] public string? FwdFromType { get; set; }
+
+    [JsonPropertyName("fwd_from_id")] public string? FwdFromId { get; set; }
+
+    [JsonPropertyName("fwd_from_name")] public string? FwdFromName { get; set; }
+
+    [JsonPropertyName("fwd_from_hidden")] public bool FwdFromHidden { get; set; }
 }

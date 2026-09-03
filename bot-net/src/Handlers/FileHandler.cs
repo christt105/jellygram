@@ -48,13 +48,20 @@ public class FileHandler
             fileName = $"video_{msg.MessageId}.mp4";
         }
 
+        var forward = ForwardMetadata.Extract(msg.ForwardOrigin, msg.TLMessage);
+
         var uploadFile = new UploadFile
         {
             MessageId = msg.MessageId,
             FileName = fileName,
             FileSize = fileSize,
             UploadDate = msg.Date.ToString("O"),
-            MimeType = mimeType ?? "video/mp4"
+            MimeType = mimeType ?? "video/mp4",
+            DocumentId = forward.DocumentId,
+            FwdFromType = forward.FromType,
+            FwdFromId = forward.FromId,
+            FwdFromName = forward.FromName,
+            FwdFromHidden = forward.Hidden
         };
 
         var message = @$"📥 New file received:

@@ -58,7 +58,12 @@ public class ApiClient : IDisposable
             created_at = fileMeta.UploadDate ?? DateTime.UtcNow.ToString("o"), // ISO 8601
             tmdb_id = fileMeta.TmdbId,
             technical_metadata = fileMeta.TechnicalMetadata,
-            storage_peer = fileMeta.StoragePeer
+            storage_peer = fileMeta.StoragePeer,
+            document_id = fileMeta.DocumentId,
+            fwd_from_type = fileMeta.FwdFromType,
+            fwd_from_id = fileMeta.FwdFromId,
+            fwd_from_name = fileMeta.FwdFromName,
+            fwd_from_hidden = fileMeta.FwdFromHidden
         };
 
         var response = await _httpClient.PostAsJsonAsync("/upload", payload);
