@@ -15,6 +15,7 @@ services:
     volumes:
       - ./appdata/bot-net:/data
       - ${MEDIA_ROOT:?set MEDIA_ROOT in .env}:/data/media
+      - ${JELLYFIN_APPDATA_ROOT:-./appdata/.jellyfin-appdata-unset}:/data/jellyfin-appdata:ro
     environment:
       - JELLYFIN_MOVIES_DIR=/data/media/${MOVIES_SUBDIR:-movies}
       - JELLYFIN_SHOWS_DIR=/data/media/${SHOWS_SUBDIR:-shows}

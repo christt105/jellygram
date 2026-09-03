@@ -242,8 +242,8 @@ public class UploadService
 
                         long[] pp = [totalUploadedBytes, lastReportedTime];
                         var stored = await SendSingleFileWithRetryAsync(
-                            partPath, partInfo.Name, "application/zip",
-                            task.Id, pp, totalBytesToUpload, useUserClient);
+                            partPath, partInfo.Name, "application/zip", AuthConfig.OwnerUserId,
+                            TaskProgressReporter(task.Id, pp, totalBytesToUpload), useUserClient);
                         totalUploadedBytes = pp[0];
                         lastReportedTime = pp[1];
 
@@ -268,8 +268,8 @@ public class UploadService
 
                     long[] dp = [totalUploadedBytes, lastReportedTime];
                     var stored = await SendSingleFileWithRetryAsync(
-                        videoFile, fileInfo.Name, mime,
-                        task.Id, dp, totalBytesToUpload, useUserClient);
+                        videoFile, fileInfo.Name, mime, AuthConfig.OwnerUserId,
+                        TaskProgressReporter(task.Id, dp, totalBytesToUpload), useUserClient);
                     totalUploadedBytes = dp[0];
                     lastReportedTime = dp[1];
 
@@ -314,10 +314,101 @@ public class UploadService
         }
     }
 
+    /// <summary>
+    /// Sends a file that belongs to no upload task, as the bot, splitting it into 7z parts first
+    /// when it is over what a single message carries. Parts go up one after another in name
+    /// order, exactly like the media transfers do.
+    /// </summary>
+    /// <remarks>
+    /// The account identity is deliberately left out: it can only send to the chat it shares with
+    /// the bot, and its uploads arrive at the bot as incoming documents that the file handler
+    /// would take for media waiting to be identified.
+    /// </remarks>
+    /// <returns>The bot's message id for every part sent, in upload order.</returns>
+    public async Task<IReadOnlyList<int>> SendLocalFileAsync(string filePath, long chatId, string? caption = null,
+        string mimeType = "application/octet-stream")
+    {
+        var fileInfo = new FileInfo(filePath);
+        if (!fileInfo.Exists) throw new FileNotFoundException("File to send not found.", filePath);
+
+        var splitLimit = UserClientService.FallbackSplitLimitBytes;
+        if (fileInfo.Length <= splitLimit)
+        {
+            var stored = await SendSingleFileWithRetryAsync(filePath, fileInfo.Name, mimeType, chatId,
+                onProgressDelta: null, useUserClient: false, caption: caption);
+            return [stored.MessageId];
+        }
+
+        var partsDir = Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(filePath))!, $"{fileInfo.Name}.parts");
+        try
+        {
+            if (Directory.Exists(partsDir)) Directory.Delete(partsDir, true);
+            Directory.CreateDirectory(partsDir);
+
+            Log.Info($"[Uploader] {fileInfo.Name} exceeds the split limit ({splitLimit / 1_000_000} MB). Splitting with 7z store-only...");
+            await SplitAndPackage(filePath, Path.Combine(partsDir, fileInfo.Name + ".zip"), splitLimit);
+
+            var parts = Directory.GetFiles(partsDir, "*.*")
+                .Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f)
+                .ToList();
+
+            var messageIds = new List<int>(parts.Count);
+            for (int partIndex = 0; partIndex < parts.Count; partIndex++)
+            {
+                var partInfo = new FileInfo(parts[partIndex]);
+                Log.Info($"[Uploader] Uploading part {partIndex + 1}/{parts.Count}: {partInfo.Name}");
+
+                var partCaption = caption == null
+                    ? partInfo.Name
+                    : $"{caption} (part {partIndex + 1}/{parts.Count})";
+
+                var partStored = await SendSingleFileWithRetryAsync(parts[partIndex], partInfo.Name, "application/zip",
+                    chatId, onProgressDelta: null, useUserClient: false, caption: partCaption);
+                messageIds.Add(partStored.MessageId);
+            }
+
+            return messageIds;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(partsDir)) Directory.Delete(partsDir, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Uploader] Failed to clean up parts folder: {partsDir}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reports an upload task's progress from the bytes each send adds. Rollbacks after a failed
+    /// attempt arrive as a negative delta and only correct the count, without publishing a
+    /// percentage that goes backwards.
+    /// </summary>
     // progress[0] = totalUploadedBytes, progress[1] = lastReportedTime
+    private Action<long> TaskProgressReporter(int taskId, long[] progress, long totalBytesToUpload) =>
+        delta =>
+        {
+            progress[0] += delta;
+            if (delta <= 0) return;
+
+            var nowTicks = DateTime.UtcNow.Ticks;
+            var elapsed = (nowTicks - progress[1]) / (double)TimeSpan.TicksPerSecond;
+            if (elapsed >= 3 || progress[0] == totalBytesToUpload)
+            {
+                progress[1] = nowTicks;
+                var percent = (int)(progress[0] * 100 / totalBytesToUpload);
+                _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
+            }
+        };
+
     private async Task<StoredUpload> SendSingleFileWithRetryAsync(
-        string filePath, string fileName, string mimeType,
-        int taskId, long[] progress, long totalBytesToUpload, bool useUserClient)
+        string filePath, string fileName, string mimeType, long chatId,
+        Action<long>? onProgressDelta, bool useUserClient, string? caption = null)
     {
         const int maxRetries = 3;
         int attempt = 0;
@@ -339,16 +430,7 @@ public class UploadService
                         {
                             var delta = transmitted - lastBytes;
                             lastBytes = transmitted;
-                            progress[0] += delta;
-
-                            var nowTicks = DateTime.UtcNow.Ticks;
-                            var elapsed = (nowTicks - progress[1]) / (double)TimeSpan.TicksPerSecond;
-                            if (elapsed >= 3 || progress[0] == totalBytesToUpload)
-                            {
-                                progress[1] = nowTicks;
-                                var percent = (int)(progress[0] * 100 / totalBytesToUpload);
-                                _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
-                            }
+                            onProgressDelta?.Invoke(delta);
                         });
 
                     var botMessageId = await echo.WaitAsync(EchoTimeout)
@@ -370,22 +452,13 @@ public class UploadService
                         {
                             var delta = transmitted - lastBytes;
                             lastBytes = transmitted;
-                            progress[0] += delta;
-
-                            var nowTicks = DateTime.UtcNow.Ticks;
-                            var elapsed = (nowTicks - progress[1]) / (double)TimeSpan.TicksPerSecond;
-                            if (elapsed >= 3 || progress[0] == totalBytesToUpload)
-                            {
-                                progress[1] = nowTicks;
-                                var percent = (int)(progress[0] * 100 / totalBytesToUpload);
-                                _ = _apiClient.UpdateUploadStatusAsync(taskId, "uploading", percent);
-                            }
+                            onProgressDelta?.Invoke(delta);
                         });
 
                         sent = await _bot.SendDocument(
-                            AuthConfig.OwnerUserId,
+                            chatId,
                             new InputFileStream(progressStream, fileName),
-                            caption: fileName
+                            caption: caption ?? fileName
                         );
                     }
                     return new StoredUpload(sent!.MessageId, null);
@@ -400,7 +473,7 @@ public class UploadService
             catch (Exception ex)
             {
                 Log.Error($"[Uploader] Attempt {attempt}/{maxRetries} failed for {fileName}: {ex.Message}");
-                progress[0] -= lastBytes;
+                onProgressDelta?.Invoke(-lastBytes);
 
                 if (attempt >= maxRetries) throw;
 
