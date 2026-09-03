@@ -126,29 +126,33 @@ public class DownloadService
                     {
                         doc ??= await ResolveThroughBotAsync(file.MessageId);
 
-                        await using (var fileStream = System.IO.File.Create(filePath))
+                        void OnProgress(long transmitted, long size)
                         {
-                            void OnProgress(long transmitted, long size)
+                            var delta = transmitted - lastBytes;
+                            lastBytes = transmitted;
+                            Interlocked.Add(ref totalDownloaded, delta);
+
+                            var nowTicks = DateTime.UtcNow.Ticks;
+                            var elapsedSeconds = (nowTicks - lastReportedTime) / (double)TimeSpan.TicksPerSecond;
+
+                            if (elapsedSeconds >= 3 || totalDownloaded == totalSize)
                             {
-                                var delta = transmitted - lastBytes;
-                                lastBytes = transmitted;
-                                Interlocked.Add(ref totalDownloaded, delta);
-
-                                var nowTicks = DateTime.UtcNow.Ticks;
-                                var elapsedSeconds = (nowTicks - lastReportedTime) / (double)TimeSpan.TicksPerSecond;
-
-                                if (elapsedSeconds >= 3 || totalDownloaded == totalSize)
-                                {
-                                    lastReportedTime = nowTicks;
-                                    var percent = (int)(totalDownloaded * 100 / totalSize);
-                                    _ = _apiClient.UpdateDownloadStatusAsync(task.TaskId, "downloading", percent);
-                                }
+                                lastReportedTime = nowTicks;
+                                var percent = (int)(totalDownloaded * 100 / totalSize);
+                                _ = _apiClient.UpdateDownloadStatusAsync(task.TaskId, "downloading", percent);
                             }
+                        }
 
-                            if (route.Identity == DownloadIdentity.Bot)
-                                await _bot.Client.DownloadFileAsync(doc, fileStream, null, OnProgress);
-                            else
-                                await _userClient!.DownloadDocumentAsync(doc, fileStream, OnProgress);
+                        if (route.Identity == DownloadIdentity.Bot)
+                        {
+                            await using var fileStream = System.IO.File.Create(filePath);
+                            await _bot.Client.DownloadFileAsync(doc, fileStream, null, OnProgress);
+                        }
+                        else
+                        {
+                            // The account owns the file itself: with more than one connection the
+                            // parts are written where they belong instead of in arrival order.
+                            await _userClient!.DownloadDocumentToFileAsync(doc, filePath, OnProgress);
                         }
                         downloadSuccess = true;
                     }

@@ -1,3 +1,4 @@
+using Bot.Utils;
 using TL;
 
 namespace Bot.Services;
@@ -12,10 +13,13 @@ public class UserClientService : IDisposable
 {
     private WTelegram.Client? _client;
     private Stream? _sessionStream;
+    private byte[]? _sessionSnapshot;
     private InputPeerUser? _botPeer;
 
     private int _apiId;
     private string _apiHash = "";
+
+    private const int DefaultParallelTransfers = 8;
 
     public bool IsAuthenticated { get; private set; }
     public bool IsPremium { get; private set; }
@@ -68,6 +72,7 @@ public class UserClientService : IDisposable
         _sessionStream?.Dispose();
         _client = null;
         _sessionStream = null;
+        _sessionSnapshot = null;
         _botPeer = null;
     }
 
@@ -84,9 +89,13 @@ public class UserClientService : IDisposable
         _apiId = apiId;
         _apiHash = apiHash;
 
+        // Read before the client takes the file for itself: extra download connections are built
+        // from these bytes, and the client holds the file without sharing it.
+        _sessionSnapshot = await File.ReadAllBytesAsync(SessionPath);
+
         _sessionStream = File.Open(SessionPath, FileMode.Open, FileAccess.ReadWrite);
         _client = new WTelegram.Client(ConfigFunc, _sessionStream);
-        Bot.Utils.TransferTuning.Apply(_client, "UserClient", defaultParallelTransfers: 8);
+        TransferTuning.Apply(_client, "UserClient", DefaultParallelTransfers);
 
         try
         {
@@ -178,6 +187,101 @@ public class UserClientService : IDisposable
             : null;
 
         await _client!.DownloadFileAsync(doc, output, null, cb);
+    }
+
+    /// <summary>
+    /// Downloads a document to a file, spreading its byte ranges over several connections when
+    /// <c>PREMIUM_DOWNLOAD_CONNECTIONS</c> asks for more than one. The account's throughput is
+    /// capped per connection rather than by a rate limit, so this is the only axis that lifts it.
+    /// One connection, or an unusable extra one, is the single-connection download as it was.
+    /// </summary>
+    public async Task DownloadDocumentToFileAsync(Document doc, string destinationPath, Action<long, long>? onProgress = null)
+    {
+        EnsureReady();
+
+        var connections = PremiumDownloadTuning.Connections;
+        if (!PremiumDownloadTuning.UseMultipleConnections(IsAuthenticated, connections))
+        {
+            await DownloadOverOneConnectionAsync(doc, destinationPath, onProgress);
+            return;
+        }
+
+        var extraClients = await OpenExtraConnectionsAsync(connections - 1);
+        if (extraClients.Count == 0)
+        {
+            Log.Info("[UserClient] No extra connection available, downloading over one.");
+            await DownloadOverOneConnectionAsync(doc, destinationPath, onProgress);
+            return;
+        }
+
+        try
+        {
+            var readers = new List<IFilePartReader> { await TelegramPartReader.CreateAsync(_client!, doc) };
+            foreach (var extra in extraClients)
+                readers.Add(await TelegramPartReader.CreateAsync(extra, doc));
+
+            var downloader = new RangedFileDownloader(
+                TransferTuning.FilePartSizeBytes,
+                TransferTuning.ParallelTransfers(DefaultParallelTransfers));
+
+            Log.Info($"[UserClient] Downloading {doc.size} bytes over {readers.Count} connections.");
+            await downloader.DownloadAsync(readers, doc.size, destinationPath, onProgress);
+            return;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[UserClient] Multi-connection download failed, retrying over one connection: {ex.Message}");
+        }
+        finally
+        {
+            foreach (var extra in extraClients)
+                extra.Dispose();
+        }
+
+        await DownloadOverOneConnectionAsync(doc, destinationPath, onProgress);
+    }
+
+    private async Task DownloadOverOneConnectionAsync(Document doc, string destinationPath, Action<long, long>? onProgress)
+    {
+        await using var output = File.Create(destinationPath);
+        await DownloadDocumentAsync(doc, output, onProgress);
+    }
+
+    /// <summary>
+    /// Opens up to <paramref name="count"/> further connections for the same account, each one a
+    /// client of its own restored from a copy of the session taken at startup. The copy carries the
+    /// MTProto session id along with the authorisation key, which two live connections cannot
+    /// share, so <c>DisableUpdates</c> is called first: it renews that id, and a download
+    /// connection has no use for the update stream anyway. The copies never write back, so the
+    /// session file on disk stays the property of the main client.
+    /// Returns fewer clients, possibly none, if any of them cannot be opened.
+    /// </summary>
+    private async Task<List<WTelegram.Client>> OpenExtraConnectionsAsync(int count)
+    {
+        var clients = new List<WTelegram.Client>(count);
+        if (_sessionSnapshot == null)
+            return clients;
+
+        for (var i = 0; i < count; i++)
+        {
+            WTelegram.Client? client = null;
+            try
+            {
+                client = new WTelegram.Client(ConfigFunc, (byte[])_sessionSnapshot.Clone(), _ => { });
+                client.DisableUpdates(true);
+                TransferTuning.Apply(client, $"UserClient+{i + 1}", DefaultParallelTransfers);
+                await client.LoginUserIfNeeded();
+                clients.Add(client);
+            }
+            catch (Exception ex)
+            {
+                Log.Info($"[UserClient] Extra connection {i + 1} could not be opened: {ex.Message}");
+                client?.Dispose();
+                break;
+            }
+        }
+
+        return clients;
     }
 
     private void EnsureReady()
