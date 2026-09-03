@@ -56,7 +56,12 @@ def upload_endpoint(payload: UploadIn, session: Session = Depends(get_session)):
         created_at=payload.created_at,
         tmdb_id=payload.tmdb_id,
         technical_metadata=payload.technical_metadata,
-        storage_peer=payload.storage_peer
+        storage_peer=payload.storage_peer,
+        document_id=payload.document_id,
+        fwd_from_type=payload.fwd_from_type,
+        fwd_from_id=payload.fwd_from_id,
+        fwd_from_name=payload.fwd_from_name,
+        fwd_from_hidden=payload.fwd_from_hidden
     )
 
     if collection.movie_id is None and collection.episode_id is None and collection.season_id is None:

@@ -16,6 +16,11 @@ class UploadIn(BaseModel):
     tmdb_id: int | None = None     # Pre-identified TMDB ID
     technical_metadata: str | None = None
     storage_peer: str = "bot"      # "bot" = bot-owner chat, "saved" = user's Saved Messages
+    document_id: int | None = None       # Telegram's stable identifier for the underlying blob
+    fwd_from_type: str | None = None     # "user", "hidden_user", "chat" or "channel"; None if not a forward
+    fwd_from_id: str | None = None
+    fwd_from_name: str | None = None
+    fwd_from_hidden: bool = False
 
 class ItemOut(BaseModel):
     id: int
