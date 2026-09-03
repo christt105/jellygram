@@ -35,6 +35,11 @@ export const getImageUrl = (itemId: string, tag?: string, maxWidth: number = 400
     return `${serverUrl}/Items/${itemId}/Images/Primary?tag=${tag}&maxWidth=${maxWidth}`;
 };
 
+// Jellyfin fills in metadata for every episode/movie a provider knows about, even when
+// no video file was ever downloaded. Those placeholders have LocationType 'Virtual'
+// instead of 'FileSystem', which is how we tell a real, uploadable file apart from one.
+export const hasVideoFile = (item: any): boolean => item?.LocationType !== 'Virtual';
+
 export interface Media {
   id: string;
   title: string;
@@ -80,7 +85,7 @@ export function useJellyfin() {
                 fields: [ItemFields.Overview, ItemFields.Tags, ItemFields.MediaSources, ItemFields.ProviderIds, ItemFields.Path, ItemFields.DateCreated] as ItemFields[]
             });
 
-            const jellyfinItems = (res.data.Items || []) as any[];
+            const jellyfinItems = (res.data.Items || []).filter(hasVideoFile) as any[];
             
             items.value = jellyfinItems.map(item => {
                 // Determine resolutions if available
@@ -160,8 +165,10 @@ export const fetchItemDetails = async (id: string, type: 'movie' | 'series') => 
                 headers: { 'Authorization': `MediaBrowser Token="${token}"` }
             });
             const epsData = await epsRes.json();
-            s.episodes = epsData.Items || [];
+            s.episodes = (epsData.Items || []).filter(hasVideoFile);
         }
+        // Seasons left with no real episode file are metadata-only placeholders.
+        item.seasons = item.seasons.filter((s: any) => s.episodes.length > 0);
     }
 
     return item;
