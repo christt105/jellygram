@@ -55,6 +55,18 @@ public class Worker : BackgroundService
             var uploadService = new UploadService(bot, apiClient, _queue, userClient, botDispatcher.UploadEchoes);
             _ = uploadService.PollAndProcessAsync(stoppingToken);
 
+            var jellyfinBackupOptions = JellyfinBackupOptions.FromEnvironment(
+                Environment.GetEnvironmentVariable, authUserId);
+            if (jellyfinBackupOptions is not null)
+            {
+                var jellyfinBackupService = new JellyfinBackupService(bot, uploadService, jellyfinBackupOptions);
+                _ = jellyfinBackupService.RunAsync(stoppingToken);
+            }
+            else
+            {
+                Log.Info("[JellyfinBackup] Disabled: set JELLYFIN_BACKUP_DIR to enable periodic backups.");
+            }
+
             var watchedFolderService = new WatchedFolderService(apiClient);
             _ = watchedFolderService.RunAsync(stoppingToken);
 

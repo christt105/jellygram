@@ -95,6 +95,12 @@ All configuration lives in `.env` (see `.env.example` for the template).
 | `DOWNLOADS_SUBDIR`      | Subdirectory of `MEDIA_ROOT` watched by `bot-net`'s downloads-import `FileSystemWatcher` (defaults `downloads`), exposed to `bot-net` at `/data/media/${DOWNLOADS_SUBDIR}` via `DOWNLOADS_DIR`. |
 | `JELLYFIN_PATH_MAP`     | Maps the paths Jellyfin reports onto `bot-net`'s own paths, as `jellyfin_path:container_path` pairs separated by commas. Only needed when Jellyfin sees the library under different paths than the host — see [Path mapping](#path-mapping). |
 | `UPLOAD_SPLIT_LIMIT_MB` | Optional override for the part size used when splitting large files. Defaults to 1950 (bot API), or 3900 when a Premium user account session is active. |
+| `JELLYFIN_APPDATA_ROOT` | Host path to Jellyfin's own appdata directory, bind-mounted read-only into `bot-net` at `/data/jellyfin-appdata`. Only needed for periodic backups — see [Jellyfin backups](#jellyfin-backups). |
+| `JELLYFIN_BACKUP_DIR`   | Enables periodic Jellyfin backups when set, to the path holding Jellyfin's state inside `bot-net` (normally `/data/jellyfin-appdata`, matching `JELLYFIN_APPDATA_ROOT`). Unset by default, backups off. |
+| `JELLYFIN_BACKUP_SUBDIRS` | Comma-separated subdirectories of `JELLYFIN_BACKUP_DIR` to archive (defaults `config,data,plugins`); blank archives the whole directory. |
+| `JELLYFIN_BACKUP_INTERVAL_HOURS` | How often to back up, in hours (defaults `168`, i.e. weekly; minimum `1`). |
+| `JELLYFIN_BACKUP_CHAT_ID` | Telegram chat backups are sent to (defaults to the owner's chat, the first id in `TELEGRAM_AUTH_USER_ID`). |
+| `JELLYFIN_BACKUP_RETAIN` | How many of the most recent backups to keep in the chat; older ones are deleted as new ones land (defaults `4`). `0` or negative keeps every backup ever sent. |
 | `PUID` / `PGID`         | User/group IDs the `backend` and `bot-net` containers run as, so they can write to the host media directories (defaults `1000:1000`). |
 | `WEB_PORT`              | Host port for the web panel (defaults `5173`). Change it if the port is already in use.          |
 | `BACKEND_PORT`          | Host port for the backend API (defaults `8005`). The web container reads it at start.           |
@@ -114,6 +120,16 @@ JELLYFIN_PATH_MAP=/media/library/movies:/data/media/movies,/media/library/shows:
 ```
 
 Each entry is `path_as_jellyfin_reports_it:path_inside_bot-net`, and the right-hand side is one of `bot-net`'s two library subdirectories. Entries are tried in order, before falling back to `MEDIA_ROOT`/`MOVIES_SUBDIR`/`SHOWS_SUBDIR`. To find the left-hand side, look at any item's path in Jellyfin (Administration → the item → the file path), or read it off the `Translated path:` line in `docker compose logs bot-net` after a failed upload.
+
+## Jellyfin backups
+
+`bot-net` can periodically archive Jellyfin's own state, not the media library, and send it through the bot so a copy lives somewhere other than the machine running Jellyfin. Off by default; set `JELLYFIN_BACKUP_DIR` to turn it on.
+
+1. Bind-mount Jellyfin's appdata directory into `bot-net` by setting `JELLYFIN_APPDATA_ROOT` to its host path, then point `JELLYFIN_BACKUP_DIR` at `/data/jellyfin-appdata` to match. See `.env.example`.
+2. By default only `config`, `data` and `plugins` are archived (`JELLYFIN_BACKUP_SUBDIRS`). `metadata` is left out: it holds posters, fanart and `.nfo` files Jellyfin re-fetches from TMDB/TheTVDB on demand, and can dwarf everything else. Add it to `JELLYFIN_BACKUP_SUBDIRS`, or blank the variable, to back up the whole directory anyway.
+3. The archive is a gzipped tar, built and sent without ever touching the media library or leaving a copy on disk afterwards.
+4. A container that has never backed up runs one right away; one restarting mid-interval waits out the remainder instead of backing up on every boot, tracked in `appdata/bot-net/jellyfin-backup-last-run`.
+5. Only the most recent `JELLYFIN_BACKUP_RETAIN` backups (default `4`) are kept in the chat: sending a new one deletes the oldest beyond that count, so a backup left running for years doesn't fill the chat history. Set it to `0` or a negative number to keep every backup ever sent instead.
 
 ## Importing from the downloads folder
 
