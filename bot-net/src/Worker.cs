@@ -23,6 +23,8 @@ public class Worker : BackgroundService
                 Log.Warning($"[Startup] Required system dependencies are missing: {string.Join(", ", missing)}. Make sure they are installed and available in the PATH.");
             }
 
+            _ = JellyfinPathAudit.RunAsync(stoppingToken);
+
             var apiId = int.Parse(Environment.GetEnvironmentVariable("TELEGRAM_API_ID")!);
             var apiHash = Environment.GetEnvironmentVariable("TELEGRAM_API_HASH")!;
             var botToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")!;
