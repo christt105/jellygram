@@ -138,14 +138,14 @@ public class UploadService
             Directory.CreateDirectory(tempDir);
 
             // 1. Translate the path Jellyfin reported into a container path
-            var localPath = PathTranslator.Translate(task.Path);
+            var mapped = PathTranslator.TryTranslate(task.Path, out var localPath);
             Log.Info($"[Uploader] Translated path: {task.Path} -> {localPath}");
 
             if (!File.Exists(localPath) && !Directory.Exists(localPath))
             {
-                var hint = localPath == task.Path
-                    ? " — no JELLYFIN_PATH_MAP or IMPORT_*_DIR prefix matched the path Jellyfin reported"
-                    : "";
+                var hint = mapped
+                    ? " (a mapping matched the path Jellyfin reported, but its target does not exist here: check JELLYFIN_PATH_MAP)"
+                    : " (no JELLYFIN_PATH_MAP entry or MEDIA_ROOT prefix matched the path Jellyfin reported)";
                 throw new Exception($"Local file or directory not found: {localPath}{hint}");
             }
 

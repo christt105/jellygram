@@ -15,16 +15,32 @@ public static class PathTranslator
 
     public static string Translate(string reportedPath, IEnumerable<PathMapping> mappings)
     {
+        TryTranslate(reportedPath, mappings, out var localPath);
+        return localPath;
+    }
+
+    public static bool TryTranslate(string reportedPath, out string localPath) =>
+        TryTranslate(reportedPath, ConfiguredMappings(), out localPath);
+
+    /// <summary>
+    /// Translates a reported path and tells the caller whether a mapping actually matched it.
+    /// <paramref name="localPath"/> is the reported path unchanged when none did, so an unmapped
+    /// path that happens to exist inside this container still resolves.
+    /// </summary>
+    public static bool TryTranslate(string reportedPath, IEnumerable<PathMapping> mappings, out string localPath)
+    {
         foreach (var (prefix, target) in mappings)
         {
             if (!reportedPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var relative = reportedPath[prefix.Length..].TrimStart('/');
-            return relative.Length == 0 ? target : $"{target}/{relative}";
+            localPath = relative.Length == 0 ? target : $"{target}/{relative}";
+            return true;
         }
 
-        return reportedPath;
+        localPath = reportedPath;
+        return false;
     }
 
     /// <summary>
@@ -50,7 +66,11 @@ public static class PathTranslator
         }
     }
 
-    private static IEnumerable<PathMapping> ConfiguredMappings()
+    /// <summary>
+    /// The mappings in effect for this deployment: JELLYFIN_PATH_MAP first, then the implicit
+    /// mapping from the host library paths under MEDIA_ROOT onto the mounted library directories.
+    /// </summary>
+    public static IEnumerable<PathMapping> ConfiguredMappings()
     {
         foreach (var mapping in ParseMap(Environment.GetEnvironmentVariable("JELLYFIN_PATH_MAP")))
             yield return mapping;
