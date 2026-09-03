@@ -16,6 +16,7 @@ public class ConfirmWatchedFileCallback : ICallbackQuery
     private readonly WTelegram.Bot _bot;
     private readonly ApiClient _apiClient;
     private readonly WatchedFileMessageRegistry _registry;
+    private readonly JellyfinSeriesIdentifier? _jellyfin;
     private readonly int _watchedFileId;
     private readonly int _tmdbId;
     private readonly int? _season;
@@ -23,8 +24,10 @@ public class ConfirmWatchedFileCallback : ICallbackQuery
 
     private ConfirmWatchedFileCallback(
         int watchedFileId, int tmdbId, int? season, int? episode,
-        WTelegram.Bot bot, ApiClient apiClient, WatchedFileMessageRegistry registry)
+        WTelegram.Bot bot, ApiClient apiClient, WatchedFileMessageRegistry registry,
+        JellyfinSeriesIdentifier? jellyfin)
     {
+        _jellyfin = jellyfin;
         _watchedFileId = watchedFileId;
         _tmdbId = tmdbId;
         _season = season;
@@ -37,7 +40,8 @@ public class ConfirmWatchedFileCallback : ICallbackQuery
     public async Task ExecuteAsync(Message? message)
     {
         var resolution = await _apiClient.ConfirmWatchedFileAsync(_watchedFileId, _tmdbId, _season, _episode);
-        await WatchedFileMoveFlow.ExecuteAsync(_bot, _apiClient, _registry, message!, _watchedFileId, resolution);
+        await WatchedFileMoveFlow.ExecuteAsync(
+            _bot, _apiClient, _registry, message!, _watchedFileId, resolution, _jellyfin);
     }
 
     public static string Pack(int watchedFileId, int tmdbId, int? season, int? episode) =>
@@ -51,6 +55,6 @@ public class ConfirmWatchedFileCallback : ICallbackQuery
 
         return new ConfirmWatchedFileCallback(
             int.Parse(fields[0]), int.Parse(fields[1]), season, episode,
-            dispatcher.Bot, dispatcher.ApiClient, dispatcher.WatchedFileMessages);
+            dispatcher.Bot, dispatcher.ApiClient, dispatcher.WatchedFileMessages, dispatcher.JellyfinSeries);
     }
 }

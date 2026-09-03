@@ -24,12 +24,16 @@ public class WatchNotificationService
     private readonly WTelegram.Bot _bot;
     private readonly ApiClient _apiClient;
     private readonly WatchedFileMessageRegistry _registry;
+    private readonly JellyfinSeriesIdentifier? _jellyfin;
 
-    public WatchNotificationService(WTelegram.Bot bot, ApiClient apiClient, WatchedFileMessageRegistry registry)
+    public WatchNotificationService(
+        WTelegram.Bot bot, ApiClient apiClient, WatchedFileMessageRegistry registry,
+        JellyfinSeriesIdentifier? jellyfin = null)
     {
         _bot = bot;
         _apiClient = apiClient;
         _registry = registry;
+        _jellyfin = jellyfin;
     }
 
     public async Task PollAndProcessAsync(CancellationToken stoppingToken)
@@ -144,7 +148,7 @@ public class WatchNotificationService
             }
 
             Log.Info($"[WatchNotification] Picking up {row.Filename} (row {row.Id}, {status} from the web).");
-            var outcome = await WatchedFileMoveFlow.MoveAndReportAsync(_apiClient, row.Id, resolution);
+            var outcome = await WatchedFileMoveFlow.MoveAndReportAsync(_apiClient, row.Id, resolution, _jellyfin);
             if (outcome is null)
             {
                 Log.Info($"[WatchNotification] {row.Filename} (row {row.Id}) is already being moved, leaving it.");
