@@ -120,9 +120,13 @@
           <h2 style="margin-bottom: 1.5rem; font-size: 2rem;">Seasons</h2>
           <div v-for="season in item.seasons" :key="season.id" class="season-block">
             
-            <div class="season-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 1rem;">
-              <h3 style="font-size: 1.5rem; margin: 0;">Season {{ season.season_number }}</h3>
-              <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+            <div class="season-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 1rem; cursor: pointer;" @click="toggleSeasonExpanded(season)">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <ChevronDown v-if="isSeasonExpanded(season)" :size="20" style="flex-shrink: 0; color: #a1a1aa;" />
+                <ChevronRight v-else :size="20" style="flex-shrink: 0; color: #a1a1aa;" />
+                <h3 style="font-size: 1.5rem; margin: 0;">Season {{ season.season_number }}</h3>
+              </div>
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;" @click.stop>
                 <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #d1d5db; cursor: pointer;" title="Non-official numbering: cinegram writes local .nfo files for this season instead of relying on Jellyfin's online providers">
                   <input type="checkbox" :checked="season.local_metadata" @change="toggleSeasonLocalMetadata(season)" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--jellyfin-blue);" />
                   Local metadata (non-official)
@@ -140,105 +144,107 @@
               </div>
             </div>
 
-            <!-- Season Packs (Collections linked directly to Season) -->
-            <div v-if="season.collections && season.collections.length > 0" class="season-packs-section" style="margin-bottom: 1.5rem;">
-              <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4ade80; display: flex; align-items: center; gap: 0.5rem;">
-                📦 Full Season Packs
-              </h4>
-              <div class="season-packs-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                <div v-for="col in season.collections" :key="col.id" class="collection-item glass-panel">
-                  <div class="col-info">
-                    <div class="col-title-row">
-                      <strong class="col-name">{{ col.name || col.quality || 'Full Season' }}</strong>
-                      <span v-if="col.files && col.files.length" class="files-chip label-caps">
-                        {{ col.files.length }} {{ col.files.length === 1 ? 'file' : 'files' }}
+            <div v-show="isSeasonExpanded(season)">
+              <!-- Season Packs (Collections linked directly to Season) -->
+              <div v-if="season.collections && season.collections.length > 0" class="season-packs-section" style="margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4ade80; display: flex; align-items: center; gap: 0.5rem;">
+                  📦 Full Season Packs
+                </h4>
+                <div class="season-packs-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                  <div v-for="col in season.collections" :key="col.id" class="collection-item glass-panel">
+                    <div class="col-info">
+                      <div class="col-title-row">
+                        <strong class="col-name">{{ col.name || col.quality || 'Full Season' }}</strong>
+                        <span v-if="col.files && col.files.length" class="files-chip label-caps">
+                          {{ col.files.length }} {{ col.files.length === 1 ? 'file' : 'files' }}
+                        </span>
+                      </div>
+                      <span v-if="col.audio_languages" class="col-meta">Audio: {{ col.audio_languages }}</span>
+                      <span v-if="getTechMeta(col)" class="col-meta">{{ getTechMeta(col) }}</span>
+                      <span v-if="col.local_path" class="col-meta" style="color: #4ade80;" :title="col.local_path">
+                        ⬇ On disk: {{ shortPath(col.local_path) }}
                       </span>
+                      <ul v-if="col.files && col.files.length" class="file-list">
+                        <li v-for="f in col.files" :key="f.id"
+                            :class="{ 'file-selected': selectingCollectionId === col.id && isFileSelected(f.id) }"
+                            :style="selectingCollectionId === col.id ? { cursor: 'pointer' } : {}"
+                            @click="selectingCollectionId === col.id ? toggleFileSelection(f.id) : null">
+                          <input v-if="selectingCollectionId === col.id" type="checkbox" :checked="isFileSelected(f.id)" @click.stop @change="toggleFileSelection(f.id)" style="flex-shrink:0;" />
+                          <span class="file-name">{{ f.filename }}</span>
+                          <span class="file-date">{{ formatDate(f.created_at) }}</span>
+                          <span class="file-size">{{ formatSize(f.filesize) }}</span>
+                        </li>
+                      </ul>
                     </div>
-                    <span v-if="col.audio_languages" class="col-meta">Audio: {{ col.audio_languages }}</span>
-                    <span v-if="getTechMeta(col)" class="col-meta">{{ getTechMeta(col) }}</span>
-                    <span v-if="col.local_path" class="col-meta" style="color: #4ade80;" :title="col.local_path">
-                      ⬇ On disk: {{ shortPath(col.local_path) }}
-                    </span>
-                    <ul v-if="col.files && col.files.length" class="file-list">
-                      <li v-for="f in col.files" :key="f.id"
-                          :class="{ 'file-selected': selectingCollectionId === col.id && isFileSelected(f.id) }"
-                          :style="selectingCollectionId === col.id ? { cursor: 'pointer' } : {}"
-                          @click="selectingCollectionId === col.id ? toggleFileSelection(f.id) : null">
-                        <input v-if="selectingCollectionId === col.id" type="checkbox" :checked="isFileSelected(f.id)" @click.stop @change="toggleFileSelection(f.id)" style="flex-shrink:0;" />
-                        <span class="file-name">{{ f.filename }}</span>
-                        <span class="file-date">{{ formatDate(f.created_at) }}</span>
-                        <span class="file-size">{{ formatSize(f.filesize) }}</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <div class="col-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button @click="toggleSelectMode(col.id)" class="glass-button btn-sm" :style="selectingCollectionId === col.id ? 'background: rgba(74,222,128,0.14); border-color: rgba(74,222,128,0.30); color: #4ade80;' : 'background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #a1a1aa;'">
-                      {{ selectingCollectionId === col.id ? 'Cancel' : 'Select' }}
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="sendCollectionPreview(col.id)" class="glass-button btn-sm" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" :disabled="sendingPreview === col.id" title="Send to Telegram">
-                      <span>{{ sendingPreview === col.id ? '⏳' : '📨' }}</span>
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="openDownloadModal(col)" class="glass-button primary btn-sm">
-                      <DownloadCloud :size="14" /> Download Pack
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="openProbeModal(col)" class="glass-button btn-sm" style="background: rgba(96, 165, 250, 0.14); border-color: rgba(96, 165, 250, 0.30); color: #60a5fa;" title="Read technical data from a file already on disk">
-                      <FileSearch :size="14" /> Probe
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id && col.local_path" @click="deleteLocalCopy(col)" class="glass-button btn-sm" :disabled="deletingLocalCopy === col.id" style="background: rgba(251, 146, 60, 0.14); border-color: rgba(251, 146, 60, 0.30); color: #fb923c;" title="Delete the file from disk, keeping the Telegram collection">
-                      <HardDrive :size="14" /> {{ deletingLocalCopy === col.id ? '…' : 'Local' }}
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="openReidentifyCollection(col)" class="glass-button btn-sm" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;">
-                      <Search :size="14" /> Re-id
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="openEditModal(col, season.season_number, null)" class="glass-button btn-sm" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); color: #fff;">
-                      <Edit3 :size="14" /> Edit
-                    </button>
-                    <button v-if="selectingCollectionId !== col.id" @click="deleteCollection(col.id)" class="glass-button danger btn-sm">
-                      <Trash2 :size="14" /> Delete
-                    </button>
+                    <div class="col-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                      <button @click="toggleSelectMode(col.id)" class="glass-button btn-sm" :style="selectingCollectionId === col.id ? 'background: rgba(74,222,128,0.14); border-color: rgba(74,222,128,0.30); color: #4ade80;' : 'background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #a1a1aa;'">
+                        {{ selectingCollectionId === col.id ? 'Cancel' : 'Select' }}
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="sendCollectionPreview(col.id)" class="glass-button btn-sm" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" :disabled="sendingPreview === col.id" title="Send to Telegram">
+                        <span>{{ sendingPreview === col.id ? '⏳' : '📨' }}</span>
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="openDownloadModal(col)" class="glass-button primary btn-sm">
+                        <DownloadCloud :size="14" /> Download Pack
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="openProbeModal(col)" class="glass-button btn-sm" style="background: rgba(96, 165, 250, 0.14); border-color: rgba(96, 165, 250, 0.30); color: #60a5fa;" title="Read technical data from a file already on disk">
+                        <FileSearch :size="14" /> Probe
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id && col.local_path" @click="deleteLocalCopy(col)" class="glass-button btn-sm" :disabled="deletingLocalCopy === col.id" style="background: rgba(251, 146, 60, 0.14); border-color: rgba(251, 146, 60, 0.30); color: #fb923c;" title="Delete the file from disk, keeping the Telegram collection">
+                        <HardDrive :size="14" /> {{ deletingLocalCopy === col.id ? '…' : 'Local' }}
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="openReidentifyCollection(col)" class="glass-button btn-sm" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;">
+                        <Search :size="14" /> Re-id
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="openEditModal(col, season.season_number, null)" class="glass-button btn-sm" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); color: #fff;">
+                        <Edit3 :size="14" /> Edit
+                      </button>
+                      <button v-if="selectingCollectionId !== col.id" @click="deleteCollection(col.id)" class="glass-button danger btn-sm">
+                        <Trash2 :size="14" /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            
-            <div class="episode-list">
-              <div v-for="ep in season.episodes" :key="ep.id" class="episode-item glass-panel" style="flex-direction: column; align-items: stretch; gap: 0;">
-                <div class="ep-info" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
-                  <strong style="color: var(--jellyfin-blue);">E{{ ep.episode_number }}</strong>
-                  <input v-if="season.local_metadata" :value="ep.title" @change="updateEpisodeTitle(season, ep, ($event.target as HTMLInputElement).value)" type="text" placeholder="Episode title" style="width: 60%; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-weight: 500;" />
-                  <span v-else style="font-weight: 500;">{{ ep.title?.replace(/^Episode\s+\d+$/, '') || 'Episode ' + ep.episode_number }}</span>
-                </div>
-                
-                <div v-if="ep.collections && ep.collections.length > 0" class="ep-collections" style="width: 100%;">
-                  <div v-for="col in ep.collections" :key="col.id" class="collection-item" style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 8px; margin-bottom: 0.5rem; border: 1px solid rgba(255,255,255,0.03);">
-                    <div style="display: flex; flex-direction: column;">
-                      <span style="font-size: 0.85rem; color: #d1d5db; font-weight: 500;">{{ col.name || col.quality || 'Auto' }}</span>
-                      <span style="font-size: 0.75rem; color: #888;">{{ col.files?.length || 0 }} files</span>
-                      <span v-if="col.local_path" style="font-size: 0.75rem; color: #4ade80;" :title="col.local_path">⬇ On disk</span>
-                    </div>
-                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; justify-content: flex-end;">
-                      <button @click="openDownloadModal(col)" class="glass-button primary btn-sm icon-only" title="Download">
-                        <DownloadCloud :size="14" />
-                      </button>
-                      <button @click="openProbeModal(col)" class="glass-button btn-sm icon-only" style="background: rgba(96, 165, 250, 0.14); border-color: rgba(96, 165, 250, 0.30); color: #60a5fa;" title="Read technical data from a file already on disk">
-                        <FileSearch :size="14" />
-                      </button>
-                      <button v-if="col.local_path" @click="deleteLocalCopy(col)" :disabled="deletingLocalCopy === col.id" class="glass-button btn-sm icon-only" style="background: rgba(251, 146, 60, 0.14); border-color: rgba(251, 146, 60, 0.30); color: #fb923c;" title="Delete the file from disk, keeping the Telegram collection">
-                        <HardDrive :size="14" />
-                      </button>
-                      <button @click="openReidentifyCollection(col)" class="glass-button btn-sm icon-only" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" title="Re-identify">
-                        <Search :size="14" />
-                      </button>
-                      <button @click="openEditModal(col, season.season_number, ep.episode_number)" class="glass-button btn-sm icon-only" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); color: #fff;" title="Edit">
-                        <Edit3 :size="14" />
-                      </button>
-                      <button @click="deleteCollection(col.id)" class="glass-button danger btn-sm icon-only" title="Delete">
-                        <Trash2 :size="14" />
-                      </button>
+
+              <div class="episode-list">
+                <div v-for="ep in season.episodes" :key="ep.id" class="episode-item glass-panel" style="flex-direction: column; align-items: stretch; gap: 0;">
+                  <div class="ep-info" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
+                    <strong style="color: var(--jellyfin-blue);">E{{ ep.episode_number }}</strong>
+                    <input v-if="season.local_metadata" :value="ep.title" @change="updateEpisodeTitle(season, ep, ($event.target as HTMLInputElement).value)" type="text" placeholder="Episode title" style="width: 60%; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-weight: 500;" />
+                    <span v-else style="font-weight: 500;">{{ ep.title?.replace(/^Episode\s+\d+$/, '') || 'Episode ' + ep.episode_number }}</span>
+                  </div>
+
+                  <div v-if="ep.collections && ep.collections.length > 0" class="ep-collections" style="width: 100%;">
+                    <div v-for="col in ep.collections" :key="col.id" class="collection-item" style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 8px; margin-bottom: 0.5rem; border: 1px solid rgba(255,255,255,0.03);">
+                      <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 0.85rem; color: #d1d5db; font-weight: 500;">{{ col.name || col.quality || 'Auto' }}</span>
+                        <span style="font-size: 0.75rem; color: #888;">{{ col.files?.length || 0 }} files</span>
+                        <span v-if="col.local_path" style="font-size: 0.75rem; color: #4ade80;" :title="col.local_path">⬇ On disk</span>
+                      </div>
+                      <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; justify-content: flex-end;">
+                        <button @click="openDownloadModal(col)" class="glass-button primary btn-sm icon-only" title="Download">
+                          <DownloadCloud :size="14" />
+                        </button>
+                        <button @click="openProbeModal(col)" class="glass-button btn-sm icon-only" style="background: rgba(96, 165, 250, 0.14); border-color: rgba(96, 165, 250, 0.30); color: #60a5fa;" title="Read technical data from a file already on disk">
+                          <FileSearch :size="14" />
+                        </button>
+                        <button v-if="col.local_path" @click="deleteLocalCopy(col)" :disabled="deletingLocalCopy === col.id" class="glass-button btn-sm icon-only" style="background: rgba(251, 146, 60, 0.14); border-color: rgba(251, 146, 60, 0.30); color: #fb923c;" title="Delete the file from disk, keeping the Telegram collection">
+                          <HardDrive :size="14" />
+                        </button>
+                        <button @click="openReidentifyCollection(col)" class="glass-button btn-sm icon-only" style="background: rgba(214, 186, 255, 0.14); border-color: rgba(214, 186, 255, 0.30); color: #d6baff;" title="Re-identify">
+                          <Search :size="14" />
+                        </button>
+                        <button @click="openEditModal(col, season.season_number, ep.episode_number)" class="glass-button btn-sm icon-only" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); color: #fff;" title="Edit">
+                          <Edit3 :size="14" />
+                        </button>
+                        <button @click="deleteCollection(col.id)" class="glass-button danger btn-sm icon-only" title="Delete">
+                          <Trash2 :size="14" />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                  <div v-else class="no-col" style="color: var(--text-secondary); font-size: 0.85rem;">Not backed up yet</div>
                 </div>
-                <div v-else class="no-col" style="color: var(--text-secondary); font-size: 0.85rem;">Not backed up yet</div>
               </div>
             </div>
           </div>
@@ -607,7 +613,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { DownloadCloud, Trash2, Edit3, Copy, Check, Search, FileSearch, HardDrive } from 'lucide-vue-next'
+import { DownloadCloud, Trash2, Edit3, Copy, Check, Search, FileSearch, HardDrive, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { findJellyfinItemByTmdbId } from '../api/jellyfin'
 
 const props = defineProps<{
@@ -699,6 +705,18 @@ const copyTmdbId = () => {
   }
 }
 
+const expandedSeasonIds = ref(new Set<number>())
+
+const isSeasonExpanded = (season: any) => expandedSeasonIds.value.has(season.id)
+
+const toggleSeasonExpanded = (season: any) => {
+  if (expandedSeasonIds.value.has(season.id)) {
+    expandedSeasonIds.value.delete(season.id)
+  } else {
+    expandedSeasonIds.value.add(season.id)
+  }
+}
+
 const fetchItem = async () => {
   isLoading.value = true
   try {
@@ -713,6 +731,8 @@ const fetchItem = async () => {
             season.episodes.sort((a: any, b: any) => a.episode_number - b.episode_number)
           }
         })
+        const latestSeason = data.seasons[data.seasons.length - 1]
+        expandedSeasonIds.value = latestSeason ? new Set([latestSeason.id]) : new Set()
       }
       item.value = data
       if (data.tmdb_id) {
