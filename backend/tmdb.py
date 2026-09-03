@@ -29,7 +29,13 @@ class TMDB:
                 re.search(r"(?<![a-zA-Z0-9])[Ss](\d{1,2})\s*[-_]\s*(\d{1,3})(?!\d)", n, re.IGNORECASE) or
                 re.search(r"\s+[-_]\s+(\d{1,3})(?!\d)$", n) or
                 re.search(r"(?<![a-zA-Z0-9])Temporada\s+\d+(?![a-zA-Z0-9])", n, re.IGNORECASE) or
-                re.search(r"(?<![a-zA-Z0-9])Season\s+\d+(?![a-zA-Z0-9])", n, re.IGNORECASE)):
+                re.search(r"(?<![a-zA-Z0-9])Season\s+\d+(?![a-zA-Z0-9])", n, re.IGNORECASE) or
+                # Anime-style absolute episode numbering with no season/episode
+                # separator (e.g. "One Piece 1085"): low-confidence "tv" hint,
+                # not a full season/episode mapping. Restricted to 4+ digit
+                # trailing numbers to avoid flagging real movie titles that
+                # end in a smaller number (e.g. "Fahrenheit 451").
+                re.search(r"[A-Za-z]\s+\d{4,}$", n)):
                 return "tv"
             return "movie"
         
@@ -56,13 +62,24 @@ class TMDB:
         # letters. Uploader nicknames routinely end in digits
         # ("...by.Mony2007"), and reading one as a release year filters the
         # TMDB search by a wrong year and returns nothing at all.
+        # Prefer the rightmost year-shaped token, and only treat it as a real
+        # year if something survives on at least one side of it: a bare
+        # numeric filename like "2012.mkv" is a title, not a year with an
+        # empty title, and "1917 (2019).mkv" has two candidates, the actual
+        # release year is the one that leaves "1917" as the title.
         year = None
         year_prefix = None
-        year_match = re.search(r"(?<![^\W_])(19\d{2}|20\d{2})(?![^\W_])", name)
-        if year_match:
-            year = int(year_match.group(1))
-            year_prefix = name[:year_match.start()]
-            name = name[:year_match.start()] + name[year_match.end():]
+        year_matches = list(re.finditer(r"(?<![^\W_])(19\d{2}|20\d{2})(?![^\W_])", name))
+        if year_matches:
+            year_match = year_matches[-1]
+            candidate_prefix = name[:year_match.start()]
+            candidate_suffix = name[year_match.end():]
+            has_prefix = bool(re.sub(r"[\s.\-_(\[]+$", "", candidate_prefix).strip())
+            has_suffix = bool(candidate_suffix.strip(" .-_)]"))
+            if has_prefix or has_suffix:
+                year = int(year_match.group(1))
+                year_prefix = candidate_prefix
+                name = candidate_prefix + candidate_suffix
 
         # Remove common noise patterns (resolution, quality, part numbers, etc.)
         noise_patterns = [

@@ -2,6 +2,107 @@ import pytest
 from tmdb import TMDB
 
 @pytest.mark.parametrize("filename,expected", [
+    ("Show S01E02.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 2,
+        "year": None
+    }),
+    ("Show 1x08.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 8,
+        "year": None
+    }),
+    ("Show S01-08.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 8,
+        "year": None
+    }),
+    ("Show S01_08.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 8,
+        "year": None
+    }),
+    ("Show - 08.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 8,
+        "year": None
+    }),
+    ("Show - Season 2.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 2,
+        "episode": None,
+        "year": None
+    }),
+    # The "episode" field only stores a single integer, so a multi-episode
+    # marker keeps just the first episode; representing a range would need a
+    # schema change beyond this filename parser.
+    ("Show S01E01E02.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 1,
+        "year": None
+    }),
+    ("Show S01E01-E03.mkv", {
+        "tmdbid": None,
+        "clean_name": "Show",
+        "type": "tv",
+        "season": 1,
+        "episode": 1,
+        "year": None
+    }),
+    # A leading number that's the title itself, not a release year, must not
+    # be swallowed by the year extraction: "1917 (2019)" has two 4-digit
+    # candidates, and the real release year (2019) is the one that leaves
+    # the title ("1917") intact.
+    ("1917 (2019).mkv", {
+        "tmdbid": None,
+        "clean_name": "1917",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": 2019
+    }),
+    # A bare numeric filename with no other text is a title, not an empty
+    # title plus a year.
+    ("2012.mkv", {
+        "tmdbid": None,
+        "clean_name": "2012",
+        "type": "movie",
+        "season": None,
+        "episode": None,
+        "year": None
+    }),
+    # Anime-style absolute episode numbering with no season/episode
+    # separator: mapping "1085" to a real season/episode needs external
+    # data this parser doesn't have, but it must at least hint "tv" instead
+    # of silently misclassifying as a movie.
+    ("One Piece 1085.mkv", {
+        "tmdbid": None,
+        "clean_name": "One Piece 1085",
+        "type": "tv",
+        "season": None,
+        "episode": None,
+        "year": None
+    }),
     ("Pokémon 2: El poder de uno (1999).zip.001", {
         "tmdbid": None,
         "clean_name": "Pokémon 2: El poder de uno",
@@ -337,3 +438,16 @@ from tmdb import TMDB
 def test_clean_filename(filename, expected):
     res = TMDB.clean_filename(filename)
     assert res == expected
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Absolute anime numbering is only hinted as tv for 4+ digit trailing "
+        "numbers; a 3-digit threshold would also misclassify real movie "
+        "titles ending in a number, e.g. 'Fahrenheit 451', as tv."
+    ),
+    strict=True,
+)
+def test_clean_filename_short_absolute_episode_number_still_misclassified_as_movie():
+    res = TMDB.clean_filename("Naruto 220.mkv")
+    assert res["type"] == "tv"
