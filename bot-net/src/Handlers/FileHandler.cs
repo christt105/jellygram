@@ -88,7 +88,17 @@ Starting to process...";
         var result = await _apiClient.UploadAsync(file);
 
         Log.Info(JsonSerializer.Serialize(result));
-        
+
+        if (result.Duplicate)
+        {
+            var message = @$"⚠️ Already in the library, this is a re-forward of a file you already have:
+Id: {file.MessageId}
+Name: {file.FileName}
+Collection ID: {result.CollectionId}";
+            await _bot.EditMessageText(answer.Chat.Id, answer.MessageId, message);
+            return;
+        }
+
         if (result.MovieId == null && result.EpisodeId == null && result.SeasonId == null && result.CollectionId.HasValue)
         {
             var message = @$"⚠️ Could not automatically identify the file.

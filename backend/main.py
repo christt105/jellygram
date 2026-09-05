@@ -46,7 +46,7 @@ def version():
 
 @app.post("/upload", response_model=ItemOut)
 def upload_endpoint(payload: UploadIn, session: Session = Depends(get_session)):
-    file, collection = create_file(
+    file, collection, duplicate = create_file(
         session,
         message_id=payload.message_id,
         user_message_id=payload.user_message_id,
@@ -64,7 +64,7 @@ def upload_endpoint(payload: UploadIn, session: Session = Depends(get_session)):
         fwd_from_hidden=payload.fwd_from_hidden
     )
 
-    if collection.movie_id is None and collection.episode_id is None and collection.season_id is None:
+    if not duplicate and collection.movie_id is None and collection.episode_id is None and collection.season_id is None:
         identify_collection(
             session, collection.id, tmdb,
             forced_tmdb_id=payload.tmdb_id
@@ -78,7 +78,8 @@ def upload_endpoint(payload: UploadIn, session: Session = Depends(get_session)):
         "collection_id": collection.id,
         "movie_id": collection.movie_id,
         "season_id": collection.season_id,
-        "episode_id": collection.episode_id
+        "episode_id": collection.episode_id,
+        "duplicate": duplicate
     }
 
 from routers.search import router as search_router

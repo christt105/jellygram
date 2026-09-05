@@ -30,6 +30,7 @@ class ItemOut(BaseModel):
     movie_id: int | None
     season_id: int | None
     episode_id: int | None
+    duplicate: bool = False  # True when this document_id was already stored under a different message
 
 # ========================
 # DTOs / Out Models
