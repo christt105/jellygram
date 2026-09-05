@@ -17,4 +17,6 @@ public class UploadFileResult
     [JsonPropertyName("season_id")] public int? SeasonId { get; set; }
 
     [JsonPropertyName("episode_id")] public int? EpisodeId { get; set; }
+
+    [JsonPropertyName("duplicate")] public bool Duplicate { get; set; }
 }

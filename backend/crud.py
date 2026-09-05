@@ -174,7 +174,15 @@ def create_file(session: Session, message_id, filename, filesize, mime_type, cre
             session.add(existing)
             session.commit()
             session.refresh(existing)
-        return existing, session.get(Collection, existing.collection_id)
+        return existing, session.get(Collection, existing.collection_id), False
+
+    if document_id is not None:
+        # Forwarding never copies the underlying blob (see README, "Forwarding does not
+        # copy the file"), so a repeat forward of the same file arrives as a brand new
+        # message_id but the same document_id. Treat it as the same file, not a new one.
+        duplicate = session.exec(select(File).where(File.document_id == document_id)).first()
+        if duplicate:
+            return duplicate, session.get(Collection, duplicate.collection_id), True
 
     collection = get_or_create_collection(session, filename, mime_type, technical_metadata)
 
@@ -197,7 +205,7 @@ def create_file(session: Session, message_id, filename, filesize, mime_type, cre
     session.add(file)
     session.commit()
     session.refresh(file)
-    return file, collection
+    return file, collection, False
 
 def get_file(session: Session, item_id: int) -> Optional[File]:
     return session.get(File, item_id)
